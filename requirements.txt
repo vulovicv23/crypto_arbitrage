@@ -1,0 +1,4 @@
+aiohttp>=3.9,<4
+numpy>=1.26,<2
+orjson>=3.9,<4
+python-dotenv>=1.0,<2

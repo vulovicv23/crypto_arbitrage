@@ -1,0 +1,133 @@
+{
+  "baseline": {
+    "description": "Control group — production defaults, maker mode, wide spread tolerance",
+    "env_overrides": {
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_SPREAD": "0.15",
+      "MAKER_MODE": "true",
+      "MAX_POSITION_PCT": "0.005",
+      "MAX_DAILY_LOSS_PCT": "0.02",
+      "MAX_OPEN_POSITIONS": "20",
+      "COOLDOWN_AFTER_LOSSES": "5",
+      "COOLDOWN_DURATION_S": "30",
+      "SIDEWAYS_SIZE_MULTIPLIER": "0.4",
+      "TREND_SIZE_MULTIPLIER": "1.0"
+    }
+  },
+  "tight_filter": {
+    "description": "High selectivity — only trade the best edges, small positions",
+    "env_overrides": {
+      "MIN_EDGE_THRESHOLD": "0.04",
+      "MAX_EDGE_THRESHOLD": "0.25",
+      "MAX_SPREAD": "0.15",
+      "MAKER_MODE": "true",
+      "MAX_POSITION_PCT": "0.004",
+      "MAX_DAILY_LOSS_PCT": "0.015",
+      "MAX_OPEN_POSITIONS": "12",
+      "COOLDOWN_AFTER_LOSSES": "3",
+      "COOLDOWN_DURATION_S": "45",
+      "SIDEWAYS_SIZE_MULTIPLIER": "0.3",
+      "TREND_SIZE_MULTIPLIER": "0.9"
+    }
+  },
+  "wide_net": {
+    "description": "Permissive edge — catch more signals with moderate sizing",
+    "env_overrides": {
+      "MIN_EDGE_THRESHOLD": "0.008",
+      "MAX_EDGE_THRESHOLD": "0.35",
+      "MAX_SPREAD": "0.15",
+      "MAKER_MODE": "true",
+      "MAX_POSITION_PCT": "0.005",
+      "MAX_DAILY_LOSS_PCT": "0.025",
+      "MAX_OPEN_POSITIONS": "25",
+      "COOLDOWN_AFTER_LOSSES": "6",
+      "COOLDOWN_DURATION_S": "20",
+      "SIDEWAYS_SIZE_MULTIPLIER": "0.5",
+      "TREND_SIZE_MULTIPLIER": "1.0"
+    }
+  },
+  "big_positions": {
+    "description": "Standard edge filter but larger position sizing and exposure",
+    "env_overrides": {
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_SPREAD": "0.15",
+      "MAKER_MODE": "true",
+      "MAX_POSITION_PCT": "0.01",
+      "MAX_DAILY_LOSS_PCT": "0.035",
+      "MAX_OPEN_POSITIONS": "20",
+      "MAX_TOTAL_EXPOSURE_PCT": "0.15",
+      "COOLDOWN_AFTER_LOSSES": "5",
+      "COOLDOWN_DURATION_S": "30",
+      "SIDEWAYS_SIZE_MULTIPLIER": "0.5",
+      "TREND_SIZE_MULTIPLIER": "1.0"
+    }
+  },
+  "near_expiry": {
+    "description": "Targets sharp probability edges close to contract resolution",
+    "env_overrides": {
+      "MIN_EDGE_THRESHOLD": "0.005",
+      "MAX_EDGE_THRESHOLD": "0.45",
+      "MAX_SPREAD": "0.15",
+      "MAKER_MODE": "true",
+      "MAX_POSITION_PCT": "0.007",
+      "MAX_DAILY_LOSS_PCT": "0.025",
+      "MAX_OPEN_POSITIONS": "25",
+      "DISCOVERY_MIN_SECONDS": "20",
+      "COOLDOWN_AFTER_LOSSES": "6",
+      "COOLDOWN_DURATION_S": "15",
+      "SIDEWAYS_SIZE_MULTIPLIER": "0.5",
+      "TREND_SIZE_MULTIPLIER": "1.1"
+    }
+  },
+  "trend_rider": {
+    "description": "Amplifies positions in trending markets, conservative in sideways",
+    "env_overrides": {
+      "MIN_EDGE_THRESHOLD": "0.015",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_SPREAD": "0.15",
+      "MAKER_MODE": "true",
+      "MAX_POSITION_PCT": "0.006",
+      "MAX_DAILY_LOSS_PCT": "0.025",
+      "MAX_OPEN_POSITIONS": "20",
+      "COOLDOWN_AFTER_LOSSES": "5",
+      "COOLDOWN_DURATION_S": "25",
+      "SIDEWAYS_SIZE_MULTIPLIER": "0.25",
+      "TREND_SIZE_MULTIPLIER": "1.3"
+    }
+  },
+  "sideways_grinder": {
+    "description": "Stays active in low-volatility ranges, pulls back in trends",
+    "env_overrides": {
+      "MIN_EDGE_THRESHOLD": "0.018",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_SPREAD": "0.15",
+      "MAKER_MODE": "true",
+      "MAX_POSITION_PCT": "0.005",
+      "MAX_DAILY_LOSS_PCT": "0.02",
+      "MAX_OPEN_POSITIONS": "20",
+      "COOLDOWN_AFTER_LOSSES": "4",
+      "COOLDOWN_DURATION_S": "20",
+      "SIDEWAYS_SIZE_MULTIPLIER": "0.85",
+      "TREND_SIZE_MULTIPLIER": "0.5"
+    }
+  },
+  "max_throughput": {
+    "description": "Maximize trade count — low bar, many slots, fast cooldown recovery",
+    "env_overrides": {
+      "MIN_EDGE_THRESHOLD": "0.005",
+      "MAX_EDGE_THRESHOLD": "0.40",
+      "MAX_SPREAD": "0.15",
+      "MAKER_MODE": "true",
+      "MAX_POSITION_PCT": "0.004",
+      "MAX_DAILY_LOSS_PCT": "0.03",
+      "MAX_OPEN_POSITIONS": "35",
+      "MAX_TOTAL_EXPOSURE_PCT": "0.15",
+      "COOLDOWN_AFTER_LOSSES": "8",
+      "COOLDOWN_DURATION_S": "10",
+      "SIDEWAYS_SIZE_MULTIPLIER": "0.6",
+      "TREND_SIZE_MULTIPLIER": "1.0"
+    }
+  }
+}
