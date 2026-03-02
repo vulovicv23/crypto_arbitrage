@@ -171,7 +171,10 @@ class RiskManager:
         # Confidence scaling from prediction
         confidence_mult = signal.prediction.confidence
 
-        size = base * regime_mult * strength_mult * confidence_mult
+        # Expiry-bucket multiplier (from strategy's time-to-expiry bucketing)
+        expiry_mult = getattr(signal, "size_multiplier", 1.0)
+
+        size = base * regime_mult * strength_mult * confidence_mult * expiry_mult
 
         # Floor: never go below $1
         return max(size, 0.0)

@@ -78,6 +78,7 @@ An actionable trade signal produced by the strategy.
 | `regime` | `MarketRegime` | Current market regime |
 | `prediction` | `Prediction` | The prediction that generated this signal |
 | `book` | `PolymarketBook` | Book snapshot at signal time |
+| `size_multiplier` | `float` | Expiry-bucket sizing multiplier (default: 1.0) |
 
 ### Order
 An order to be submitted to the Polymarket CLOB.

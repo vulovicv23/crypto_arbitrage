@@ -269,17 +269,21 @@ class StrategyEngine:
             if edge <= 0:
                 continue
 
+            # Get edge thresholds (bucketed by time-to-expiry if enabled)
+            min_edge, max_edge, size_mult = self._get_edge_params(seconds_left)
+
             # Threshold checks
-            if edge < self._cfg.min_edge_threshold:
+            if edge < min_edge:
                 continue
-            if edge > self._cfg.max_edge_threshold:
+            if edge > max_edge:
                 logger.debug(
-                    "Edge %.4f exceeds max threshold — skipping (stale?)",
+                    "Edge %.4f exceeds max threshold (%.4f) — skipping (stale?)",
                     edge,
+                    max_edge,
                 )
                 continue
 
-            strength = self._classify_strength(edge)
+            strength = self._classify_strength(edge, min_edge)
             condition_id = market_ctx.condition_id
 
             signal = Signal(
@@ -296,6 +300,7 @@ class StrategyEngine:
                 outcome=outcome.value,
                 seconds_to_expiry=seconds_left,
                 btc_volatility=btc_vol,
+                size_multiplier=size_mult,
             )
             signals.append(signal)
 
@@ -461,17 +466,61 @@ class StrategyEngine:
         returns = np.diff(prices) / prices[:-1]
         return float(np.std(returns))
 
+    # ── expiry-bucketed thresholds ─────────────────────────────────────
+
+    def _get_edge_params(self, seconds_left: float) -> tuple[float, float, float]:
+        """Return (min_edge, max_edge, size_multiplier) for the expiry bucket.
+
+        When ``expiry_buckets_enabled`` is False, returns the flat config
+        thresholds with multiplier 1.0.
+
+        Buckets:
+          - Near (<near_expiry_s): aggressive — lower thresholds, higher sizing.
+            Binary options sharpen near expiry so edges are real and large.
+          - Mid (near..far): standard thresholds.
+          - Far (>far_expiry_s): conservative — higher thresholds, lower sizing.
+            More time = more uncertainty = need bigger edge to justify trade.
+        """
+        if not self._cfg.expiry_buckets_enabled:
+            return (
+                self._cfg.min_edge_threshold,
+                self._cfg.max_edge_threshold,
+                1.0,
+            )
+
+        if seconds_left < self._cfg.near_expiry_s:
+            return (
+                self._cfg.near_min_edge,
+                self._cfg.near_max_edge,
+                self._cfg.near_size_mult,
+            )
+        elif seconds_left > self._cfg.far_expiry_s:
+            return (
+                self._cfg.far_min_edge,
+                self._cfg.far_max_edge,
+                self._cfg.far_size_mult,
+            )
+        else:
+            # Mid bucket — use standard thresholds
+            return (
+                self._cfg.min_edge_threshold,
+                self._cfg.max_edge_threshold,
+                1.0,
+            )
+
     # ── helpers ───────────────────────────────────────────────────────
 
-    def _classify_strength(self, abs_edge: float) -> SignalStrength:
+    def _classify_strength(
+        self, abs_edge: float, min_edge: float | None = None
+    ) -> SignalStrength:
         """Classify edge into signal strength tiers.
 
-        Thresholds scale with min_edge_threshold:
+        Thresholds scale with min_edge (bucket-aware):
           WEAK:     1.0× – 1.5× min_edge
           MODERATE: 1.5× – 2.5× min_edge
           STRONG:   > 2.5× min_edge
         """
-        t = self._cfg.min_edge_threshold
+        t = min_edge if min_edge is not None else self._cfg.min_edge_threshold
         if abs_edge < 1.5 * t:
             return SignalStrength.WEAK
         elif abs_edge < 2.5 * t:

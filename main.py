@@ -59,6 +59,7 @@ from src.market_discovery import DiscoveredMarket, MarketDiscovery
 from src.models import (
     MarketContext,
     OrderStatus,
+    PolymarketBook,
     Position,
     Prediction,
     PriceTick,
@@ -207,7 +208,7 @@ class Bot:
         if self._dry_run and not self._poly_connected:
             dr = self._cfg.dry_run
             self._synthetic_books = SyntheticBookGenerator(
-                book_callback=self._strategy.on_book_update,
+                book_callback=self._on_book_update,
                 update_interval=dr.book_update_interval,
                 ema_alpha=dr.book_ema_alpha,
                 noise_std=dr.book_noise_std,
@@ -391,7 +392,7 @@ class Bot:
                 self._poly_client.set_token_condition_map(token_mapping)
                 await self._poly_client.subscribe_books(
                     self._cfg.polymarket.btc_condition_ids,
-                    self._strategy.on_book_update,
+                    self._on_book_update,
                 )
 
         logger.info("All %d tasks launched", len(self._tasks))
@@ -593,7 +594,7 @@ class Bot:
                 )
                 await self._poly_client.subscribe_books(
                     new_token_ids,
-                    self._strategy.on_book_update,
+                    self._on_book_update,
                 )
 
         # ── Fetch initial book snapshots for new markets ───────────────
@@ -602,7 +603,7 @@ class Bot:
                 for tid in m.token_ids:
                     try:
                         book = await self._poly_client.get_order_book(tid)
-                        await self._strategy.on_book_update(book)
+                        await self._on_book_update(book)
                     except Exception as exc:
                         logger.warning(
                             "Failed to fetch initial book for %s: %s",
@@ -670,6 +671,18 @@ class Bot:
                     confidence=0.5,
                 )
                 self._synthetic_books.feed_prediction(fake_pred)
+
+    # ── book update forwarder ────────────────────────────────────────
+
+    async def _on_book_update(self, book: PolymarketBook) -> None:
+        """Forward book snapshots to both strategy and ML predictor.
+
+        The strategy uses books for edge computation; the ML predictor
+        uses book mid/spread history for orderbook-derived features (53-55).
+        """
+        await self._strategy.on_book_update(book)
+        if self._ml_predictor is not None and book.mid_price > 0:
+            self._ml_predictor.update_book(book.mid_price, book.spread)
 
     # ── price splitter (ML mode) ────────────────────────────────────
 

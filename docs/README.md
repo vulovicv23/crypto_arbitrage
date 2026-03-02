@@ -34,4 +34,4 @@ Implementation documentation for the Crypto Arbitrage Bot.
 
 - **Logging**: `src/logger_setup.py` — Colored console + JSON file output, configured via `LoggingConfig`
 - **Entry point**: `main.py` — `Bot` class orchestrates all components, `DryRunOrderManager` for paper trading
-- **ML pipeline**: `src/ml/` — Optional LightGBM prediction module (49 features, streaming inference)
+- **ML pipeline**: `src/ml/` — Optional LightGBM prediction module (58 features, streaming inference)

@@ -159,6 +159,24 @@ class StrategyConfig:
     volatility_window: int = int(os.getenv("VOLATILITY_WINDOW", "60"))
     # Confidence-weighted sizing: scale position by signal strength.
     confidence_scale: bool = True
+    # --- Time-to-expiry bucketed thresholds ---
+    # When enabled, edge thresholds and sizing vary by time-to-expiry.
+    # Near (<near_expiry_s): aggressive, lower thresholds (binary sharpens near expiry)
+    # Mid (near..far): standard thresholds (uses min/max_edge_threshold above)
+    # Far (>far_expiry_s): conservative, higher thresholds (more uncertainty)
+    expiry_buckets_enabled: bool = os.getenv(
+        "EXPIRY_BUCKETS_ENABLED", "false"
+    ).lower() in ("true", "1", "yes")
+    near_expiry_s: float = float(os.getenv("NEAR_EXPIRY_S", "120"))
+    far_expiry_s: float = float(os.getenv("FAR_EXPIRY_S", "600"))
+    # Near bucket: lower min_edge (more aggressive), allow large edges near resolution.
+    near_min_edge: float = float(os.getenv("NEAR_MIN_EDGE", "0.01"))
+    near_max_edge: float = float(os.getenv("NEAR_MAX_EDGE", "0.40"))
+    near_size_mult: float = float(os.getenv("NEAR_SIZE_MULT", "1.2"))
+    # Far bucket: higher min_edge (more conservative), tighter max edge.
+    far_min_edge: float = float(os.getenv("FAR_MIN_EDGE", "0.03"))
+    far_max_edge: float = float(os.getenv("FAR_MAX_EDGE", "0.20"))
+    far_size_mult: float = float(os.getenv("FAR_SIZE_MULT", "0.7"))
 
 
 # ---------------------------------------------------------------------------
@@ -237,7 +255,7 @@ class MLConfig:
     # Enable ML prediction source (requires a trained model file).
     enabled: bool = os.getenv("ML_ENABLED", "false").lower() in ("true", "1", "yes")
     # Path to the trained model artifact (.pkl).
-    model_path: str = os.getenv("ML_MODEL_PATH", "models/btc_5m_v2.pkl")
+    model_path: str = os.getenv("ML_MODEL_PATH", "models/btc_5m_v3.pkl")
     # Rolling buffer size for the feature engine (seconds of history).
     feature_window: int = int(os.getenv("ML_FEATURE_WINDOW", "4000"))
     # How often to emit ML predictions (seconds).

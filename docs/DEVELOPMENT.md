@@ -169,7 +169,7 @@ crypto_arbitrage/
 |   +-- ws_pool.py              # WebSocket connection pool (500 tokens/conn)
 |   +-- logger_setup.py         # Logging configuration (console + JSON file + rotation)
 |   +-- ml/                     # Machine learning prediction module
-|       +-- features.py         # Feature engineering (49 features, batch + streaming)
+|       +-- features.py         # Feature engineering (58 features, batch + streaming)
 |       +-- predictor.py        # LightGBM inference wrapper (async)
 +-- tools/
 |   +-- test_matrix.py          # Parallel bot testing framework

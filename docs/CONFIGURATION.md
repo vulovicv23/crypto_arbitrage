@@ -150,8 +150,19 @@ Where `P(outcome)` is estimated via the normal CDF: `P(up) = Φ(z)`, with `z = (
 | `ema_slow_span`       | `EMA_SLOW_SPAN`        | `int`   | `26`    | Slow EMA span for regime detection                                          |
 | `volatility_window`   | `VOLATILITY_WINDOW`    | `int`   | `60`    | Number of ticks for volatility calculation                                  |
 | `confidence_scale`    | _(hardcoded)_          | `bool`  | `True`  | Whether to scale position by signal strength                                |
+| `expiry_buckets_enabled` | `EXPIRY_BUCKETS_ENABLED` | `bool` | `false` | Enable time-dependent edge thresholds                                    |
+| `near_expiry_s`       | `NEAR_EXPIRY_S`        | `int`   | `120`   | Near-expiry bucket boundary (seconds)                                       |
+| `far_expiry_s`        | `FAR_EXPIRY_S`         | `int`   | `600`   | Far-expiry bucket boundary (seconds)                                        |
+| `near_min_edge`       | `NEAR_MIN_EDGE`        | `float` | `0.01`  | Min edge for near-expiry bucket                                             |
+| `near_max_edge`       | `NEAR_MAX_EDGE`        | `float` | `0.50`  | Max edge for near-expiry bucket                                             |
+| `near_size_mult`      | `NEAR_SIZE_MULT`       | `float` | `1.2`   | Size multiplier for near-expiry bucket                                      |
+| `far_min_edge`        | `FAR_MIN_EDGE`         | `float` | `0.03`  | Min edge for far-expiry bucket                                              |
+| `far_max_edge`        | `FAR_MAX_EDGE`         | `float` | `0.25`  | Max edge for far-expiry bucket                                              |
+| `far_size_mult`       | `FAR_SIZE_MULT`        | `float` | `0.7`   | Size multiplier for far-expiry bucket                                       |
 
 **Edge thresholds are in probability space** (not return space). A `min_edge_threshold` of `0.02` means the strategy requires at least a 2% probability advantage over the market-implied probability. The `max_edge_threshold` of `0.30` is generous because near-expiry markets can legitimately show large edges (10–25%) as probability sharpens.
+
+**Expiry buckets** (when enabled) override the flat thresholds with time-dependent values. Near-expiry markets accept lower edges (binary sharpening), while far-expiry markets require higher edges (conservative margin). See `docs/strategy.md` for details.
 
 ---
 
@@ -193,7 +204,7 @@ Controls the optional ML prediction pipeline. Disabled by default — when enabl
 | Field                  | Env Variable              | Type    | Default                   | Description                                           |
 |------------------------|---------------------------|---------|---------------------------|-------------------------------------------------------|
 | `enabled`              | `ML_ENABLED`              | `bool`  | `false`                   | Master switch for ML prediction pipeline              |
-| `model_path`           | `ML_MODEL_PATH`           | `str`   | `models/btc_5m_v2.pkl`   | Path to trained LightGBM .pkl artifact                |
+| `model_path`           | `ML_MODEL_PATH`           | `str`   | `models/btc_5m_v3.pkl`   | Path to trained LightGBM .pkl artifact                |
 | `feature_window`       | `ML_FEATURE_WINDOW`       | `int`   | `4000`                    | Rolling buffer size in seconds                        |
 | `prediction_interval`  | `ML_PREDICTION_INTERVAL`  | `float` | `0.25`                    | How often to emit predictions (seconds)               |
 | `min_confidence`       | `ML_MIN_CONFIDENCE`       | `float` | `0.1`                     | Minimum confidence threshold to emit signal           |
@@ -202,7 +213,7 @@ Controls the optional ML prediction pipeline. Disabled by default — when enabl
 
 **`enabled`** is parsed as truthy: `"true"`, `"1"`, `"yes"` (case-insensitive) all evaluate to `True`.
 
-**Model artifact requirements:** The .pkl file must contain a `"model"` key with a LightGBM booster and a `"num_features"` key matching the feature engine's output (49). Optional `"calibrator"` key for isotonic calibration.
+**Model artifact requirements:** The .pkl file must contain a `"model"` key with a LightGBM booster and a `"num_features"` key matching the feature engine's output (58). Optional `"calibrator"` key for isotonic calibration.
 
 **Warmup:** The feature engine requires 3661 ticks (~61 minutes of data) before producing predictions. During warmup, the ML predictor silently skips inference.
 
@@ -266,6 +277,15 @@ All configurable environment variables in one table:
 | `EMA_FAST_SPAN`             | `StrategyConfig`        | `int`       | `12`       | No       | Fast EMA span                                  |
 | `EMA_SLOW_SPAN`             | `StrategyConfig`        | `int`       | `26`       | No       | Slow EMA span                                  |
 | `VOLATILITY_WINDOW`         | `StrategyConfig`        | `int`       | `60`       | No       | Volatility lookback window (ticks)             |
+| `EXPIRY_BUCKETS_ENABLED`    | `StrategyConfig`        | `bool`      | `false`    | No       | Enable time-dependent edge thresholds          |
+| `NEAR_EXPIRY_S`             | `StrategyConfig`        | `int`       | `120`      | No       | Near-expiry bucket boundary (seconds)          |
+| `FAR_EXPIRY_S`              | `StrategyConfig`        | `int`       | `600`      | No       | Far-expiry bucket boundary (seconds)           |
+| `NEAR_MIN_EDGE`             | `StrategyConfig`        | `float`     | `0.01`     | No       | Min edge for near-expiry bucket                |
+| `NEAR_MAX_EDGE`             | `StrategyConfig`        | `float`     | `0.50`     | No       | Max edge for near-expiry bucket                |
+| `NEAR_SIZE_MULT`            | `StrategyConfig`        | `float`     | `1.2`      | No       | Size multiplier for near-expiry bucket         |
+| `FAR_MIN_EDGE`              | `StrategyConfig`        | `float`     | `0.03`     | No       | Min edge for far-expiry bucket                 |
+| `FAR_MAX_EDGE`              | `StrategyConfig`        | `float`     | `0.25`     | No       | Max edge for far-expiry bucket                 |
+| `FAR_SIZE_MULT`             | `StrategyConfig`        | `float`     | `0.7`      | No       | Size multiplier for far-expiry bucket          |
 | `MAX_POSITION_PCT`          | `RiskConfig`            | `float`     | `0.005`    | No       | Max capital fraction per trade                 |
 | `MAX_DAILY_LOSS_PCT`        | `RiskConfig`            | `float`     | `0.02`     | No       | Daily loss limit before halt                   |
 | `MAX_OPEN_POSITIONS`        | `RiskConfig`            | `int`       | `20`       | No       | Max concurrent positions                       |
@@ -278,7 +298,7 @@ All configurable environment variables in one table:
 | `MAX_ORDERS_PER_SECOND`     | `ExecutionConfig`       | `int`       | `50`       | No       | Rate limit cap                                 |
 | `HTTP_POOL_SIZE`            | `ExecutionConfig`       | `int`       | `20`       | No       | HTTP connection pool size                      |
 | `ML_ENABLED`                | `MLConfig`              | `bool`      | `false`    | No       | Enable ML prediction pipeline                  |
-| `ML_MODEL_PATH`             | `MLConfig`              | `str`       | `models/btc_5m_v2.pkl` | No | Path to trained model artifact          |
+| `ML_MODEL_PATH`             | `MLConfig`              | `str`       | `models/btc_5m_v3.pkl` | No | Path to trained model artifact          |
 | `ML_FEATURE_WINDOW`         | `MLConfig`              | `int`       | `4000`     | No       | Rolling buffer size (seconds)                  |
 | `ML_PREDICTION_INTERVAL`    | `MLConfig`              | `float`     | `0.25`     | No       | Prediction emit interval (seconds)             |
 | `ML_MIN_CONFIDENCE`         | `MLConfig`              | `float`     | `0.1`      | No       | Minimum confidence threshold                   |

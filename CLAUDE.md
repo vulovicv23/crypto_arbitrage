@@ -45,7 +45,7 @@ This is a **single-component project** (not a monorepo). All source code lives i
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**Data flow:** Market Discovery finds active 5m/15m BTC Up/Down markets via Gamma API and feeds token IDs to the strategy + WS subscriber. Price sources push `PriceTick` objects into a shared queue. When ML is enabled, a price splitter fans ticks to both the `PredictionAggregator` and the `MLPredictor`. The `PredictionAggregator` blends them into `Prediction` objects using linear regression; the `MLPredictor` computes 49 features and runs LightGBM inference to emit its own `Prediction` objects. Both feed into the `StrategyEngine`, which compares predictions against Polymarket order books and emits `Signal` objects. The `RiskManager` gates each signal, and the `OrderManager` submits approved trades to the Polymarket CLOB.
+**Data flow:** Market Discovery finds active 5m/15m BTC Up/Down markets via Gamma API and feeds token IDs to the strategy + WS subscriber. Price sources push `PriceTick` objects into a shared queue. When ML is enabled, a price splitter fans ticks to both the `PredictionAggregator` and the `MLPredictor`. The `PredictionAggregator` blends them into `Prediction` objects using linear regression; the `MLPredictor` computes 58 features and runs LightGBM inference to emit its own `Prediction` objects. Both feed into the `StrategyEngine`, which compares predictions against Polymarket order books and emits `Signal` objects. The `RiskManager` gates each signal, and the `OrderManager` submits approved trades to the Polymarket CLOB.
 
 ---
 
@@ -116,7 +116,7 @@ crypto_arbitrage/
 │   ├── ws_pool.py                # WebSocket connection pool (500 tokens/conn)
 │   └── ml/                       # Machine learning prediction module
 │       ├── __init__.py
-│       ├── features.py           # Feature engineering (49 features, batch + streaming)
+│       ├── features.py           # Feature engineering (58 features, batch + streaming)
 │       └── predictor.py          # LightGBM inference wrapper (async)
 │
 ├── docs/                         # Implementation documentation
@@ -209,7 +209,7 @@ LOG_LEVEL=INFO
 
 # ML Prediction (optional, disabled by default)
 ML_ENABLED=false
-ML_MODEL_PATH=models/btc_5m_v2.pkl
+ML_MODEL_PATH=models/btc_5m_v3.pkl
 ML_FEATURE_WINDOW=4000
 ML_PREDICTION_INTERVAL=0.25
 ML_MIN_CONFIDENCE=0.1

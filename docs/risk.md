@@ -37,7 +37,7 @@ Checks are evaluated in order — first failure short-circuits:
 ### Position Sizing
 
 ```
-size = base * regime_multiplier * strength_multiplier * confidence_multiplier
+size = base * regime_multiplier * strength_multiplier * confidence_multiplier * expiry_multiplier
 ```
 
 | Factor | Formula |
@@ -46,6 +46,7 @@ size = base * regime_multiplier * strength_multiplier * confidence_multiplier
 | `regime_multiplier` | SIDEWAYS: 0.4x, TRENDING: 1.0x |
 | `strength_multiplier` | WEAK: 0.5x, MODERATE: 0.75x, STRONG: 1.0x |
 | `confidence_multiplier` | prediction confidence (0.0–1.0) |
+| `expiry_multiplier` | From `Signal.size_multiplier` (default: 1.0; see expiry buckets in `docs/strategy.md`) |
 
 ### Risk Parameters
 

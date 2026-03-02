@@ -103,12 +103,13 @@ When `ML_ENABLED=true`, the bot adds a parallel prediction path:
 
 2. **MLPredictor** runs two concurrent loops:
    - **Ingest loop**: Consumes `PriceTick` objects, feeds rolling buffer to `FeatureEngine`
-   - **Predict loop**: Every 0.25s, computes 49 features, runs LightGBM inference (~<1ms), emits `Prediction` objects
+   - **Predict loop**: Every 0.25s, computes 58 features, runs LightGBM inference (~<1ms), emits `Prediction` objects
 
-3. **Feature catalogue** (49 frozen features):
+3. **Feature catalogue** (58 frozen features):
    - Returns (6), volatility (4), momentum (3), acceleration (2), volume (4)
    - VWAP deviation (2), Bollinger z-score (2), EMA/MACD (2), range/intensity (2)
-   - Multi-timeframe 1m/5m bars (10), microstructure (8+3), orderbook pass-through (5), time (2)
+   - Multi-timeframe 1m/5m bars (10), v2 features (8), candlestick microstructure (6)
+   - Orderbook pass-through (5), time features (2)
 
 4. **Warmup**: Requires 3661 ticks (~61 minutes) before first prediction. The `FeatureEngine` returns `None` until sufficient data is accumulated.
 

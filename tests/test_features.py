@@ -307,14 +307,24 @@ class TestCandlestickMicrostructure:
         assert not np.isnan(result[3700, 50]), "shadow_imbalance_60s is NaN"
 
     def test_shadow_ratios_sum(self):
-        """body + upper_shadow + lower_shadow should sum to ~1.0."""
-        ts, o, h, l, c, v, t = _make_klines(5000)
-        result = compute_batch(ts, o, h, l, c, v, t)
+        """body + upper_shadow + lower_shadow should sum to ~1.0 for proper candles."""
+        # Use realistic candle data where low <= open,close <= high
+        n = 5000
+        rng = np.random.default_rng(42)
+        closes = 80000 * np.exp(np.cumsum(rng.normal(0, 0.0001, n)))
+        highs = closes + np.abs(rng.normal(0, 1.0, n))
+        lows = closes - np.abs(rng.normal(0, 1.0, n))
+        # Ensure opens are between low and high
+        opens = lows + rng.uniform(0, 1, n) * (highs - lows)
+        ts = np.arange(n, dtype=np.int64) * 1000
+        v = rng.uniform(0.1, 10.0, n)
+        t = rng.integers(1, 100, n).astype(np.float64)
+        result = compute_batch(ts, opens, highs, lows, closes, v, t)
         body = result[3700, 45]
         upper = result[3700, 46]
         lower = result[3700, 47]
         total = body + upper + lower
-        # Should sum to 1.0 (all parts of the candle)
+        # Should sum to 1.0 for well-formed candles
         assert abs(total - 1.0) < 0.01, f"Candle parts sum to {total}, expected ~1.0"
 
     def test_flat_candle_defaults(self):

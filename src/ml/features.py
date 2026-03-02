@@ -558,16 +558,15 @@ def compute_batch(
     safe_hl_cs = np.where(no_range_cs, 1.0, hl_range_cs)
 
     # ----- body_ratio (feature 45): |close-open| / (high-low) -----
-    features[:, 45] = np.where(
-        no_range_cs, 0.0, np.abs(closes - opens) / safe_hl_cs
-    )
+    features[:, 45] = np.where(no_range_cs, 0.0, np.abs(closes - opens) / safe_hl_cs)
 
     # ----- upper_shadow_ratio (feature 46): (high - max(open,close)) / (high-low) -----
-    upper_shadow = highs - np.maximum(opens, closes)
+    # Clamp to 0 for robustness (open can exceed high in tick-level data)
+    upper_shadow = np.maximum(highs - np.maximum(opens, closes), 0.0)
     features[:, 46] = np.where(no_range_cs, 0.0, upper_shadow / safe_hl_cs)
 
     # ----- lower_shadow_ratio (feature 47): (min(open,close) - low) / (high-low) -----
-    lower_shadow = np.minimum(opens, closes) - lows
+    lower_shadow = np.maximum(np.minimum(opens, closes) - lows, 0.0)
     features[:, 47] = np.where(no_range_cs, 0.0, lower_shadow / safe_hl_cs)
 
     # ----- close_location_60s (feature 48): rolling mean of (close-low)/(high-low) -----
@@ -580,9 +579,7 @@ def compute_batch(
     features[:, 49] = _rolling_mean(body_mom, 60)
 
     # ----- shadow_imbalance_60s (feature 50): rolling mean of (upper-lower)/(high-low) -----
-    shadow_imb = np.where(
-        no_range_cs, 0.0, (upper_shadow - lower_shadow) / safe_hl_cs
-    )
+    shadow_imb = np.where(no_range_cs, 0.0, (upper_shadow - lower_shadow) / safe_hl_cs)
     features[:, 50] = _rolling_mean(shadow_imb, 60)
 
     # =================================================================

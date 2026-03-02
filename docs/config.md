@@ -64,6 +64,15 @@ Trading strategy parameters.
 | `ema_slow_span` | `EMA_SLOW_SPAN` | 26 | Slow EMA span for trend detection |
 | `volatility_window` | `VOLATILITY_WINDOW` | 60 | Ticks for volatility calculation |
 | `confidence_scale` | — | True | Scale position by signal confidence |
+| `expiry_buckets_enabled` | `EXPIRY_BUCKETS_ENABLED` | false | Enable time-dependent edge thresholds |
+| `near_expiry_s` | `NEAR_EXPIRY_S` | 120 | Near-expiry bucket boundary (seconds) |
+| `far_expiry_s` | `FAR_EXPIRY_S` | 600 | Far-expiry bucket boundary (seconds) |
+| `near_min_edge` | `NEAR_MIN_EDGE` | 0.01 | Min edge for near-expiry bucket |
+| `near_max_edge` | `NEAR_MAX_EDGE` | 0.50 | Max edge for near-expiry bucket |
+| `near_size_mult` | `NEAR_SIZE_MULT` | 1.2 | Size multiplier for near-expiry bucket |
+| `far_min_edge` | `FAR_MIN_EDGE` | 0.03 | Min edge for far-expiry bucket |
+| `far_max_edge` | `FAR_MAX_EDGE` | 0.25 | Max edge for far-expiry bucket |
+| `far_size_mult` | `FAR_SIZE_MULT` | 0.7 | Size multiplier for far-expiry bucket |
 
 ## RiskConfig
 
@@ -112,7 +121,7 @@ ML prediction pipeline (optional, disabled by default).
 | Parameter | Env Var | Default | Description |
 |-----------|---------|---------|-------------|
 | `enabled` | `ML_ENABLED` | false | Enable ML prediction pipeline |
-| `model_path` | `ML_MODEL_PATH` | `models/btc_5m_v2.pkl` | Path to trained .pkl artifact |
+| `model_path` | `ML_MODEL_PATH` | `models/btc_5m_v3.pkl` | Path to trained .pkl artifact |
 | `feature_window` | `ML_FEATURE_WINDOW` | 4000 | Rolling buffer size (seconds) |
 | `prediction_interval` | `ML_PREDICTION_INTERVAL` | 0.25 | Prediction emit interval (seconds) |
 | `min_confidence` | `ML_MIN_CONFIDENCE` | 0.1 | Minimum confidence to emit signal |

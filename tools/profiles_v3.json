@@ -1,0 +1,155 @@
+{
+  "v3_ml_baseline": {
+    "description": "v3 ML model (58 features) with standard thresholds",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_5m_v3.pkl",
+      "ML_FEATURE_WINDOW": "4000",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "ML_MIN_CONFIDENCE": "0.1",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.005",
+      "EXPIRY_BUCKETS_ENABLED": "false"
+    }
+  },
+  "v3_ml_expiry_buckets": {
+    "description": "v3 ML with time-to-expiry bucketed strategy",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_5m_v3.pkl",
+      "ML_FEATURE_WINDOW": "4000",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "ML_MIN_CONFIDENCE": "0.1",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.005",
+      "EXPIRY_BUCKETS_ENABLED": "true",
+      "NEAR_EXPIRY_S": "120",
+      "FAR_EXPIRY_S": "600",
+      "NEAR_MIN_EDGE": "0.01",
+      "NEAR_MAX_EDGE": "0.40",
+      "NEAR_SIZE_MULT": "1.2",
+      "FAR_MIN_EDGE": "0.03",
+      "FAR_MAX_EDGE": "0.20",
+      "FAR_SIZE_MULT": "0.7"
+    }
+  },
+  "v3_ml_aggressive_near": {
+    "description": "v3 ML with very aggressive near-expiry thresholds",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_5m_v3.pkl",
+      "ML_FEATURE_WINDOW": "4000",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "ML_MIN_CONFIDENCE": "0.05",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.005",
+      "EXPIRY_BUCKETS_ENABLED": "true",
+      "NEAR_EXPIRY_S": "90",
+      "FAR_EXPIRY_S": "600",
+      "NEAR_MIN_EDGE": "0.005",
+      "NEAR_MAX_EDGE": "0.50",
+      "NEAR_SIZE_MULT": "1.5",
+      "FAR_MIN_EDGE": "0.03",
+      "FAR_MAX_EDGE": "0.20",
+      "FAR_SIZE_MULT": "0.6"
+    }
+  },
+  "v3_no_ml_control": {
+    "description": "No ML model - pure aggregator baseline for comparison",
+    "env_overrides": {
+      "ML_ENABLED": "false",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.005",
+      "EXPIRY_BUCKETS_ENABLED": "false"
+    }
+  },
+  "v3_no_ml_expiry_buckets": {
+    "description": "No ML but with expiry-bucketed strategy",
+    "env_overrides": {
+      "ML_ENABLED": "false",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.005",
+      "EXPIRY_BUCKETS_ENABLED": "true",
+      "NEAR_EXPIRY_S": "120",
+      "FAR_EXPIRY_S": "600",
+      "NEAR_MIN_EDGE": "0.01",
+      "NEAR_MAX_EDGE": "0.40",
+      "NEAR_SIZE_MULT": "1.2",
+      "FAR_MIN_EDGE": "0.03",
+      "FAR_MAX_EDGE": "0.20",
+      "FAR_SIZE_MULT": "0.7"
+    }
+  },
+  "v3_ml_high_conf": {
+    "description": "v3 ML with higher confidence threshold (less noise)",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_5m_v3.pkl",
+      "ML_FEATURE_WINDOW": "4000",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "ML_MIN_CONFIDENCE": "0.3",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.005",
+      "EXPIRY_BUCKETS_ENABLED": "true",
+      "NEAR_EXPIRY_S": "120",
+      "FAR_EXPIRY_S": "600",
+      "NEAR_MIN_EDGE": "0.01",
+      "NEAR_MAX_EDGE": "0.40",
+      "NEAR_SIZE_MULT": "1.2",
+      "FAR_MIN_EDGE": "0.03",
+      "FAR_MAX_EDGE": "0.20",
+      "FAR_SIZE_MULT": "0.7"
+    }
+  },
+  "v3_ml_conservative": {
+    "description": "v3 ML with conservative sizing and wider thresholds",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_5m_v3.pkl",
+      "ML_FEATURE_WINDOW": "4000",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "ML_MIN_CONFIDENCE": "0.2",
+      "MIN_EDGE_THRESHOLD": "0.03",
+      "MAX_EDGE_THRESHOLD": "0.25",
+      "MAX_POSITION_PCT": "0.003",
+      "MAX_DAILY_LOSS_PCT": "0.01",
+      "EXPIRY_BUCKETS_ENABLED": "true",
+      "NEAR_EXPIRY_S": "120",
+      "FAR_EXPIRY_S": "600",
+      "NEAR_MIN_EDGE": "0.015",
+      "NEAR_MAX_EDGE": "0.35",
+      "NEAR_SIZE_MULT": "1.0",
+      "FAR_MIN_EDGE": "0.04",
+      "FAR_MAX_EDGE": "0.20",
+      "FAR_SIZE_MULT": "0.5"
+    }
+  },
+  "v3_ml_wide_bucket": {
+    "description": "v3 ML with wider near-expiry bucket (180s) and gentler far",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_5m_v3.pkl",
+      "ML_FEATURE_WINDOW": "4000",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "ML_MIN_CONFIDENCE": "0.1",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.005",
+      "EXPIRY_BUCKETS_ENABLED": "true",
+      "NEAR_EXPIRY_S": "180",
+      "FAR_EXPIRY_S": "450",
+      "NEAR_MIN_EDGE": "0.01",
+      "NEAR_MAX_EDGE": "0.40",
+      "NEAR_SIZE_MULT": "1.3",
+      "FAR_MIN_EDGE": "0.025",
+      "FAR_MAX_EDGE": "0.25",
+      "FAR_SIZE_MULT": "0.8"
+    }
+  }
+}

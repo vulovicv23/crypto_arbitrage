@@ -6,8 +6,8 @@ Uses walk-forward cross-validation to ensure no future data leakage.
 Produces a model artifact (.pkl) that can be loaded by MLPredictor.
 
 Usage:
-    python tools/train_model.py --horizon 300 --output models/btc_5m_v2.pkl
-    python tools/train_model.py --horizon 300 --dead-zone 0.001 --output models/btc_5m_v2.pkl
+    python tools/train_model.py --horizon 300 --output models/btc_5m_v3.pkl
+    python tools/train_model.py --horizon 300 --dead-zone 0.001 --output models/btc_5m_v3.pkl
     python tools/train_model.py --horizon 300 --dead-zone 0.001 --optuna --optuna-trials 50
 
 Prerequisites:
@@ -701,7 +701,7 @@ def save_model(
         "num_features": NUM_FEATURES,
         "horizon_s": horizon_s,
         "dead_zone": dead_zone,
-        "version": f"v2_h{horizon_s}",
+        "version": f"v3_h{horizon_s}",
         "metrics": {
             "avg_brier": float(np.mean([r.brier_score for r in fold_results])),
             "avg_logloss": float(np.mean([r.log_loss_val for r in fold_results])),
@@ -856,8 +856,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--output",
-        default="models/btc_5m_v2.pkl",
-        help="Output model path. Default: models/btc_5m_v2.pkl",
+        default="models/btc_5m_v3.pkl",
+        help="Output model path. Default: models/btc_5m_v3.pkl",
     )
     args = parser.parse_args()
 

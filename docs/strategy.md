@@ -151,15 +151,21 @@ edge = fair_value - mid_price
 | Minimum edge         | `MIN_EDGE_THRESHOLD`  | `0.02`   | Below this, signal is ignored (no trade)             |
 | Maximum edge         | `MAX_EDGE_THRESHOLD`  | `0.30`   | Above this, signal is discarded as stale/erroneous   |
 
-```python
-# From _evaluate():
-if edge < self._cfg.min_edge_threshold:
-    continue  # too small to trade
-if edge > self._cfg.max_edge_threshold:
-    continue  # too large -- likely stale or erroneous
-```
-
 The thresholds are in **probability space** (not return space). An edge of 0.02 means our model estimates 2% higher probability than the market. Near-expiry markets can legitimately show large edges (0.10-0.25), so the max threshold is generous at 0.30.
+
+### Expiry-Bucketed Thresholds
+
+When `EXPIRY_BUCKETS_ENABLED=true`, edge thresholds and position sizing adapt based on time-to-expiry. The method `_get_edge_params(seconds_left)` returns `(min_edge, max_edge, size_multiplier)` based on three buckets:
+
+| Bucket | Time Range | Min Edge | Max Edge | Size Mult | Rationale |
+|--------|-----------|----------|----------|-----------|-----------|
+| Near   | < 120s    | 0.01     | 0.50     | 1.2x      | Binary sharpening near expiry — lower edges are legitimate |
+| Mid    | 120–600s  | config   | config   | 1.0x      | Standard thresholds from config |
+| Far    | > 600s    | 0.03     | 0.25     | 0.7x      | Conservative — high uncertainty, size down |
+
+All bucket boundaries and thresholds are configurable via `StrategyConfig` (see `docs/CONFIGURATION.md`).
+
+When `expiry_buckets_enabled=false` (default), flat config thresholds are used for all time-to-expiry values. The `size_multiplier` is carried through the `Signal` object and applied during position sizing in the risk manager.
 
 ### Additional Filters
 
@@ -179,8 +185,8 @@ Defined in `StrategyEngine._classify_strength()` (`src/strategy.py`).
 The classification uses multiples of `min_edge_threshold` (denoted `t`):
 
 ```python
-def _classify_strength(self, abs_edge: float) -> SignalStrength:
-    t = self._cfg.min_edge_threshold
+def _classify_strength(self, abs_edge: float, min_edge: float | None = None) -> SignalStrength:
+    t = min_edge if min_edge is not None else self._cfg.min_edge_threshold
     if abs_edge < 1.5 * t:
         return SignalStrength.WEAK
     elif abs_edge < 2.5 * t:
@@ -188,6 +194,8 @@ def _classify_strength(self, abs_edge: float) -> SignalStrength:
     else:
         return SignalStrength.STRONG
 ```
+
+The optional `min_edge` parameter makes strength classification bucket-aware when expiry buckets are enabled. Each bucket's local `min_edge` is used instead of the global config threshold.
 
 With the default `min_edge_threshold = 0.02`:
 

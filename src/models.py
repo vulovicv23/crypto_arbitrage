@@ -169,6 +169,7 @@ class Signal:
     outcome: str = ""  # "YES" or "NO" — which token we're buying
     seconds_to_expiry: float = 0.0  # time remaining when signal was generated
     btc_volatility: float = 0.0  # BTC return volatility used in computation
+    size_multiplier: float = 1.0  # expiry-bucket sizing multiplier
 
 
 @dataclass(slots=True)
