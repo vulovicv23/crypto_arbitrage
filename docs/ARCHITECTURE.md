@@ -83,8 +83,8 @@ Three independent async tasks produce `PriceTick` objects:
 | Source | Type | Latency | Interval |
 |--------|------|---------|----------|
 | Binance | WebSocket stream | ~50ms | Real-time per trade |
-| CryptoCompare | REST polling | ~500ms | 1.0s |
-| CoinGecko | REST polling | ~1000ms | 2.0s |
+| CryptoCompare | WebSocket (CCCAGG) / REST fallback | ~100ms / ~500ms | Real-time / 1.0s |
+| CoinGecko | REST polling | ~1000ms | 30.0s |
 
 All emit into `price_queue` (capacity: 5000). Back-pressure: drop oldest on overflow.
 

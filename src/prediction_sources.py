@@ -258,7 +258,7 @@ class CryptoCompareWSSource(PriceSource):
             receive_timeout=60,  # Expect at least a heartbeat every 30s
         ) as ws:
             logger.info("CryptoCompare WS connected to %s", self._ws_url)
-            self._reconnect_delay = 1.0  # Reset backoff on successful connect
+            # NOTE: Don't reset backoff here — only after first real message
 
             # Build subscription list
             subs = self._build_subscription_list()
@@ -271,10 +271,14 @@ class CryptoCompareWSSource(PriceSource):
                 )
 
             # Process incoming messages
+            got_message = False
             async for msg in ws:
                 if not self._running:
                     break
                 if msg.type == aiohttp.WSMsgType.TEXT:
+                    if not got_message:
+                        got_message = True
+                        self._reconnect_delay = 1.0  # Reset backoff on first real message
                     await self._handle_message(msg.data)
                 elif msg.type in (
                     aiohttp.WSMsgType.CLOSED,
@@ -389,6 +393,7 @@ class CoinGeckoSource(PriceSource):
         self._poll_interval = poll_interval
 
     async def _run(self) -> None:
+        backoff = self._poll_interval
         async with aiohttp.ClientSession() as session:
             while self._running:
                 try:
@@ -396,9 +401,33 @@ class CoinGeckoSource(PriceSource):
                         self._url, timeout=aiohttp.ClientTimeout(total=5)
                     ) as resp:
                         data = await resp.json()
-                        price = float(data["bitcoin"]["usd"])
+                        # Handle rate-limit and error responses
+                        if "status" in data and "error_code" in data.get("status", {}):
+                            code = data["status"]["error_code"]
+                            if code == 429:
+                                backoff = min(backoff * 2, 120.0)
+                                logger.warning(
+                                    "CoinGecko rate limited — backing off %.0fs",
+                                    backoff,
+                                )
+                                await asyncio.sleep(backoff)
+                                continue
+                            logger.warning(
+                                "CoinGecko API error %s: %s",
+                                code,
+                                data["status"].get("error_message", ""),
+                            )
+                            await asyncio.sleep(backoff)
+                            continue
+                        btc = data.get("bitcoin")
+                        if not btc or "usd" not in btc:
+                            logger.warning("CoinGecko unexpected response: %s", data)
+                            await asyncio.sleep(self._poll_interval)
+                            continue
+                        price = float(btc["usd"])
                         if price > 0:
                             await self._emit(PriceTick(source="coingecko", price=price))
+                            backoff = self._poll_interval  # Reset on success
                 except Exception as exc:
                     logger.warning("CoinGecko error: %s", exc)
                 await asyncio.sleep(self._poll_interval)

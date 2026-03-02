@@ -283,7 +283,7 @@ class Bot:
             CoinGeckoSource(
                 self._price_queue,
                 self._cfg.predictions.coingecko_url,
-                self._cfg.predictions.rest_poll_interval * 2,
+                max(self._cfg.predictions.rest_poll_interval * 2, 30.0),
             ),
         ]
 

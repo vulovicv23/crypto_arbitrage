@@ -10,7 +10,7 @@ Price feed integrations that produce `PriceTick` objects feeding the strategy. E
 ┌──────────────┐
 │ BinanceWS    │──┐
 ├──────────────┤  │
-│ CryptoCompRE │──┤──>  price_queue (asyncio.Queue[PriceTick])
+│ CryptoCompWS │──┤──>  price_queue (asyncio.Queue[PriceTick])
 ├──────────────┤  │
 │ CoinGeckoRE  │──┘
 └──────────────┘
@@ -45,9 +45,24 @@ Lowest-latency source. Streams individual BTC/USDT trades from Binance.
 
 Parses Binance trade messages: `price = data["p"]`, `volume = data["q"]`, `timestamp = data["T"] * 1_000_000` (ms to ns).
 
-### CryptoCompareSource (REST Polling)
+### CryptoCompareWSSource (WebSocket) — Default
 
-Secondary price feed. Polls CryptoCompare REST API.
+Preferred source when `CRYPTOCOMPARE_API_KEY` is set. Streams the CCCAGG volume-weighted aggregate index via the CoinDesk Data Streamer WebSocket.
+
+| Parameter | Source | Default |
+|-----------|--------|---------|
+| WebSocket URL | `CRYPTOCOMPARE_WS_URL` | `wss://streamer.cryptocompare.com/v2` |
+| API key | `CRYPTOCOMPARE_API_KEY` | (required for WS) |
+| Heartbeat | hardcoded | 25s (aiohttp ping) |
+| Receive timeout | hardcoded | 60s |
+
+Subscribes to `5~CCCAGG~BTC~USD` (TYPE 5 = aggregate index). Also supports raw exchange trades via TYPE 0 subscriptions.
+
+**Backoff**: Exponential backoff on disconnection (1s → 2s → 4s → ... → 30s max). Backoff resets only after the first real message is received, not on connection alone. This prevents tight reconnect loops when the server accepts connections but immediately closes them.
+
+### CryptoCompareSource (REST Polling) — Fallback
+
+Used when no `CRYPTOCOMPARE_API_KEY` is configured.
 
 | Parameter | Source | Default |
 |-----------|--------|---------|
@@ -58,13 +73,15 @@ Secondary price feed. Polls CryptoCompare REST API.
 
 ### CoinGeckoSource (REST Polling)
 
-Free-tier price feed. Polls CoinGecko API.
+Free-tier price feed. Polls CoinGecko API. Lowest priority source.
 
 | Parameter | Source | Default |
 |-----------|--------|---------|
 | API URL | hardcoded | CoinGecko simple price endpoint |
-| Poll interval | `REST_POLL_INTERVAL * 2` | 2.0s |
+| Poll interval | `max(REST_POLL_INTERVAL * 2, 30s)` | 30.0s |
 | Request timeout | hardcoded | 5s |
+
+**Rate limit handling**: CoinGecko's free tier has strict rate limits (~10-30 calls/min). The source handles 429 responses with exponential backoff (doubles wait time up to 120s, resets on success). Non-429 API errors and unexpected response formats are logged and retried at the normal interval.
 
 ## PredictionAggregator
 

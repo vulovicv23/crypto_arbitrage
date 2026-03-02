@@ -47,10 +47,13 @@ External price feed configuration.
 | Parameter | Env Var | Default | Description |
 |-----------|---------|---------|-------------|
 | `binance_ws_url` | — | `wss://stream.binance.com:9443/ws/btcusdt@trade` | Binance WebSocket URL |
-| `cryptocompare_api_key` | `CRYPTOCOMPARE_API_KEY` | "" | CryptoCompare API key (optional) |
-| `cryptocompare_url` | — | CryptoCompare BTC/USD endpoint | REST API URL |
+| `cryptocompare_api_key` | `CRYPTOCOMPARE_API_KEY` | "" | CryptoCompare API key (enables WS mode) |
+| `cryptocompare_ws_url` | `CRYPTOCOMPARE_WS_URL` | `wss://streamer.cryptocompare.com/v2` | CryptoCompare WebSocket URL (CCCAGG stream) |
+| `cryptocompare_url` | — | CryptoCompare BTC/USD endpoint | REST API URL (fallback when no API key) |
 | `coingecko_url` | — | CoinGecko BTC/USD endpoint | REST API URL |
 | `rest_poll_interval` | `REST_POLL_INTERVAL` | 1.0 | Polling interval for REST feeds (seconds) |
+
+**Note:** CoinGecko poll interval is enforced to `max(rest_poll_interval * 2, 30s)` to respect free-tier rate limits.
 
 ## StrategyConfig
 

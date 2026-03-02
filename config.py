@@ -113,7 +113,7 @@ class PredictionSourcesConfig:
     # CryptoCompare / CoinDesk Data Streamer — WebSocket for CCCAGG index
     cryptocompare_api_key: str = os.getenv("CRYPTOCOMPARE_API_KEY", "")
     cryptocompare_ws_url: str = os.getenv(
-        "CRYPTOCOMPARE_WS_URL", "wss://data-streamer.cryptocompare.com/v2"
+        "CRYPTOCOMPARE_WS_URL", "wss://streamer.cryptocompare.com/v2"
     )
     # CryptoCompare REST fallback (used when no API key is set)
     cryptocompare_url: str = (
