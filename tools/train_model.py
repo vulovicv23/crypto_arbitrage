@@ -262,7 +262,7 @@ def walk_forward_splits(
 
 def compute_features_chunked(
     data: KlineData,
-    chunk_size: int = 2_000_000,
+    chunk_size: int = 500_000,
 ) -> np.ndarray:
     """Compute features for all rows, processing in chunks to manage memory.
 
@@ -281,10 +281,22 @@ def compute_features_chunked(
 
     # Process in chunks with overlap for context
     start = 0
+    chunk_num = 0
+    total_chunks = (n + chunk_size - 1) // chunk_size
     while start < n:
         # Include overlap from before the chunk for lookback context
         ctx_start = max(0, start - overlap)
         end = min(start + chunk_size, n)
+        chunk_num += 1
+
+        logger.info(
+            "  Chunk %d/%d: rows %s–%s (+ %s context)...",
+            chunk_num,
+            total_chunks,
+            f"{start:,}",
+            f"{end:,}",
+            f"{start - ctx_start:,}",
+        )
 
         chunk_features = compute_batch(
             timestamps_ms=data.timestamps_ms[ctx_start:end],
@@ -299,6 +311,7 @@ def compute_features_chunked(
         # Copy only the non-overlap portion into the result
         offset = start - ctx_start  # how many overlap rows to skip
         all_features[start:end] = chunk_features[offset:]
+        del chunk_features  # free chunk memory immediately
 
         start = end
 
@@ -739,7 +752,16 @@ async def run(args: argparse.Namespace) -> None:
     """Load data, compute features, train, and save."""
 
     # Load klines from PostgreSQL
-    data = await load_klines()
+    start_ms = None
+    if args.max_days > 0:
+        import datetime
+
+        cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+            days=args.max_days
+        )
+        start_ms = int(cutoff.timestamp() * 1000)
+        logger.info("Limiting data to last %d days (since %s)", args.max_days, cutoff.date())
+    data = await load_klines(start_ms=start_ms)
 
     logger.info(
         "Data range: %s → %s (%s rows, %.1f days)",
@@ -853,6 +875,12 @@ def main() -> None:
         type=int,
         default=50,
         help="Number of Optuna trials. Default: 50",
+    )
+    parser.add_argument(
+        "--max-days",
+        type=int,
+        default=0,
+        help="Limit training to the most recent N days of data. 0 = use all. Default: 0",
     )
     parser.add_argument(
         "--output",

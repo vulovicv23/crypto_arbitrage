@@ -22,6 +22,7 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -60,7 +61,7 @@ class ProfileResult:
     total_trades: int = 0
     total_volume: float = 0.0
     trades_per_hour: float = 0.0
-    # PnL (real = from resolution records; falls back to edge×size if unresolved)
+    # PnL (only from natural resolutions — no fallback)
     total_pnl: float = 0.0
     avg_edge: float = 0.0
     median_edge: float = 0.0
@@ -68,10 +69,16 @@ class ProfileResult:
     resolved_count: int = 0
     force_resolved_count: int = 0
     unresolved_count: int = 0
+    natural_resolved_count: int = 0
     real_win_count: int = 0
     real_loss_count: int = 0
     real_win_rate: float = 0.0
     total_fees: float = 0.0
+    # Snapshot (open positions at shutdown)
+    snapshot_count: int = 0
+    snapshot_unrealized_pnl: float = 0.0
+    # Restarts
+    restart_count: int = 0
     # Latency
     avg_latency_ms: float = 0.0
     # Risk
@@ -233,6 +240,7 @@ class ResultsAnalyzer:
                 exit_code,
                 error,
             )
+            result.restart_count = self._read_restart_count(profile_dir)
             results[name] = result
 
         self._compute_composite_scores(results)
@@ -281,6 +289,17 @@ class ResultsAnalyzer:
             return text[:500]
         return ""
 
+    @staticmethod
+    def _read_restart_count(profile_dir: Path) -> int:
+        """Read the restart count for a profile."""
+        path = profile_dir / ".restart_count"
+        if path.exists():
+            try:
+                return int(path.read_text().strip())
+            except ValueError:
+                return 0
+        return 0
+
     # ── metrics computation ──────────────────────────────────────────
 
     def _compute_metrics(
@@ -293,9 +312,10 @@ class ResultsAnalyzer:
     ) -> ProfileResult:
         """Compute all metrics from trade records (entries + resolutions).
 
-        When resolution records are present (type=resolution), we use real
-        PnL (pnl_net, after fees) instead of theoretical edge × size.
-        For entries without a matching resolution, we fall back to edge × size.
+        Only natural resolutions (not force-resolved) contribute to PnL and
+        win-rate metrics. Entries without resolutions are counted for trade
+        activity stats but excluded from PnL calculations (no edge×size
+        fallback).
         """
         result = ProfileResult(
             profile_name=name,
@@ -307,22 +327,25 @@ class ResultsAnalyzer:
         if not records:
             return result
 
-        # Separate entries from resolutions
+        # Separate entries, resolutions, and snapshots
         entries: list[dict] = []
         resolutions: dict[str, dict] = {}  # order_id -> resolution record
+        snapshots: list[dict] = []
         for rec in records:
             rec_type = rec.get("type", "entry")  # backward compat: no type = entry
             if rec_type == "resolution":
                 oid = rec.get("order_id", "")
                 if oid:
                     resolutions[oid] = rec
+            elif rec_type == "snapshot":
+                snapshots.append(rec)
             else:
                 entries.append(rec)
 
         if not entries:
             return result
 
-        # Build per-trade PnL: prefer real resolution over edge×size
+        # Build per-trade PnL: only natural resolutions count
         pnl_per_trade: list[float] = []
         edges: list[float] = []
         sizes: list[float] = []
@@ -350,18 +373,20 @@ class ResultsAnalyzer:
                 # Use real PnL from resolution (after fees)
                 pnl_net = resolution.get("pnl_net", 0.0)
                 fee = resolution.get("fee", 0.0)
-                pnl_per_trade.append(pnl_net)
                 total_fees += fee
                 resolved_count += 1
                 if resolution.get("force_resolved", False):
                     force_resolved_count += 1
-                if pnl_net > 0:
-                    real_win_count += 1
+                    # Do NOT count force-resolved in PnL metrics
                 else:
-                    real_loss_count += 1
+                    # Only natural resolutions count toward PnL/WR
+                    pnl_per_trade.append(pnl_net)
+                    if pnl_net > 0:
+                        real_win_count += 1
+                    else:
+                        real_loss_count += 1
             else:
-                # Fallback: theoretical edge × size
-                pnl_per_trade.append(edge * size)
+                # No fallback PnL — just count as unresolved
                 unresolved_count += 1
 
         total_pnl = sum(pnl_per_trade)
@@ -408,15 +433,23 @@ class ResultsAnalyzer:
         result.outcome_distribution = outcome_dist
 
         # Resolution-specific fields
+        natural_count = resolved_count - force_resolved_count
         result.resolved_count = resolved_count
         result.force_resolved_count = force_resolved_count
         result.unresolved_count = unresolved_count
+        result.natural_resolved_count = natural_count
         result.real_win_count = real_win_count
         result.real_loss_count = real_loss_count
         result.real_win_rate = (
-            real_win_count / resolved_count if resolved_count > 0 else 0.0
+            real_win_count / natural_count if natural_count > 0 else 0.0
         )
         result.total_fees = total_fees
+
+        # Snapshot fields (positions open at shutdown)
+        result.snapshot_count = len(snapshots)
+        result.snapshot_unrealized_pnl = sum(
+            s.get("unrealized_pnl", 0.0) for s in snapshots
+        )
 
         return result
 
@@ -468,8 +501,8 @@ class ResultsAnalyzer:
         if not active:
             return
 
-        # Check if resolution data is available (any profile has resolutions)
-        has_resolutions = any(r.resolved_count > 0 for r in active.values())
+        # Check if natural resolution data is available
+        has_resolutions = any(r.natural_resolved_count > 0 for r in active.values())
 
         weights = {
             "sharpe": 0.20,
@@ -542,8 +575,8 @@ class ReportGenerator:
             reverse=True,
         )
 
-        # Detect if any profile has resolution data
-        has_resolutions = any(r.resolved_count > 0 for r in ranked)
+        # Detect if any profile has natural resolution data
+        has_resolutions = any(r.natural_resolved_count > 0 for r in ranked)
         pnl_label = "Real PnL" if has_resolutions else "Exp. PnL"
 
         header = (
@@ -583,7 +616,8 @@ class ReportGenerator:
         for i, r in enumerate(ranked, 1):
             pf_str = f"{r.profit_factor:.1f}" if r.profit_factor < 1000 else "∞"
             err_flag = " ⚠" if r.error else ""
-            wr_str = f"{r.real_win_rate * 100:.1f}" if r.resolved_count > 0 else "—"
+            natural = r.natural_resolved_count
+            wr_str = f"{r.real_win_rate * 100:.0f}%({natural})" if natural > 0 else "—"
             fees_str = f"${r.total_fees:.2f}" if r.total_fees > 0 else "—"
             print(
                 fmt.format(
@@ -605,15 +639,17 @@ class ReportGenerator:
 
         # Resolution summary
         if has_resolutions:
-            total_resolved = sum(r.resolved_count for r in ranked)
+            total_natural = sum(r.natural_resolved_count for r in ranked)
             total_force = sum(r.force_resolved_count for r in ranked)
-            total_unresolved = sum(r.unresolved_count for r in ranked)
+            total_snapshots = sum(r.snapshot_count for r in ranked)
             total_entries = sum(r.total_trades for r in ranked)
             print(
-                f"\n  Resolution: {total_resolved}/{total_entries} entries resolved "
-                f"({total_force} force-resolved at shutdown, "
-                f"{total_unresolved} unresolved → fallback edge×size)"
+                f"\n  Resolution: {total_natural} natural / "
+                f"{total_force} force-resolved / "
+                f"{total_snapshots} open at shutdown "
+                f"(from {total_entries} entries)"
             )
+            print("  Only natural resolutions counted in PnL, WR%, Sharpe, and scoring.")
 
         if ranked and ranked[0].total_trades > 0:
             print(f"\n  🏆 Best profile: {ranked[0].profile_name}")
@@ -660,7 +696,7 @@ class ReportGenerator:
             reverse=True,
         )
 
-        has_resolutions = any(r.resolved_count > 0 for r in ranked)
+        has_resolutions = any(r.natural_resolved_count > 0 for r in ranked)
         pnl_label = "Real PnL" if has_resolutions else "Exp. PnL"
 
         lines: list[str] = [
@@ -677,7 +713,12 @@ class ReportGenerator:
 
         for i, r in enumerate(ranked, 1):
             pf = f"{r.profit_factor:.1f}" if r.profit_factor < 1000 else "∞"
-            wr = f"{r.real_win_rate * 100:.1f}%" if r.resolved_count > 0 else "—"
+            natural = r.natural_resolved_count
+            wr = (
+                f"{r.real_win_rate * 100:.0f}% ({natural})"
+                if natural > 0
+                else "—"
+            )
             fees = f"${r.total_fees:.2f}" if r.total_fees > 0 else "—"
             lines.append(
                 f"| #{i} | {r.profile_name} | {r.total_trades} "
@@ -689,14 +730,19 @@ class ReportGenerator:
 
         # Resolution summary
         if has_resolutions:
-            total_resolved = sum(r.resolved_count for r in ranked)
+            total_natural = sum(r.natural_resolved_count for r in ranked)
             total_force = sum(r.force_resolved_count for r in ranked)
-            total_unresolved = sum(r.unresolved_count for r in ranked)
+            total_snapshots = sum(r.snapshot_count for r in ranked)
             total_entries = sum(r.total_trades for r in ranked)
             lines.append(
-                f"\n> **Resolution:** {total_resolved}/{total_entries} entries "
-                f"resolved ({total_force} force-resolved at shutdown, "
-                f"{total_unresolved} unresolved → fallback edge×size)\n"
+                f"\n> **Resolution:** {total_natural} natural / "
+                f"{total_force} force-resolved / "
+                f"{total_snapshots} open at shutdown "
+                f"(from {total_entries} entries)\n"
+            )
+            lines.append(
+                "> Only natural resolutions counted in PnL, WR%, Sharpe, "
+                "and scoring.\n"
             )
 
         lines.append("\n## Per-Profile Details\n")
@@ -709,21 +755,27 @@ class ReportGenerator:
             lines.append(f"- **Trades:** {r.total_trades}")
             lines.append(f"- **Volume:** ${r.total_volume:,.2f}")
             lines.append(f"- **{pnl_label}:** ${r.total_pnl:,.2f}")
-            if r.resolved_count > 0:
+            if r.natural_resolved_count > 0:
                 lines.append(
                     f"- **Win Rate:** {r.real_win_rate * 100:.1f}% "
-                    f"({r.real_win_count}W / {r.real_loss_count}L)"
+                    f"({r.real_win_count}W / {r.real_loss_count}L "
+                    f"from {r.natural_resolved_count} natural resolutions)"
                 )
                 lines.append(f"- **Total Fees:** ${r.total_fees:.2f}")
                 lines.append(
-                    f"- **Resolved:** {r.resolved_count} "
-                    f"({r.force_resolved_count} force-resolved)"
+                    f"- **Resolved:** {r.natural_resolved_count} natural"
+                    f" / {r.force_resolved_count} force-resolved"
                 )
                 if r.unresolved_count > 0:
                     lines.append(
                         f"- **Unresolved:** {r.unresolved_count} "
-                        "(PnL from edge×size fallback)"
+                        "(excluded from PnL)"
                     )
+            if r.snapshot_count > 0:
+                lines.append(
+                    f"- **Open at Shutdown:** {r.snapshot_count} positions "
+                    f"(unrealized: ${r.snapshot_unrealized_pnl:+,.2f})"
+                )
             lines.append(f"- **Avg Edge:** {r.avg_edge:.4f}")
             lines.append(f"- **Median Edge:** {r.median_edge:.4f}")
             lines.append(f"- **Avg Latency:** {r.avg_latency_ms:.1f}ms")
@@ -770,6 +822,10 @@ class MatrixOrchestrator:
     _GRACE_PERIOD_S = 30.0
     # Timeout after SIGTERM before SIGKILL
     _KILL_TIMEOUT_S = 10.0
+    # Max auto-restarts per profile on unexpected exit
+    _MAX_RESTARTS_PER_PROFILE = 3
+    # Progress snapshot interval (seconds)
+    _PROGRESS_INTERVAL_S = 7200  # every 2 hours
 
     def __init__(
         self,
@@ -887,6 +943,7 @@ class MatrixOrchestrator:
             env[key] = value
         # Route logs to profile-specific directory
         env["LOG_DIR"] = str(profile_dir)
+        env["LOG_LEVEL"] = "WARNING"
         return env
 
     def _spawn_process(
@@ -896,9 +953,7 @@ class MatrixOrchestrator:
     ) -> subprocess.Popen:
         """Spawn a single bot subprocess."""
         env = self._build_env(profile, profile_dir)
-        stdout_path = profile_dir / "stdout.log"
         stderr_path = profile_dir / "stderr.log"
-        stdout_file = open(stdout_path, "w")
         stderr_file = open(stderr_path, "w")
 
         cmd = [
@@ -915,13 +970,49 @@ class MatrixOrchestrator:
             cmd,
             env=env,
             cwd=str(PROJECT_ROOT),
-            stdout=stdout_file,
+            stdout=subprocess.DEVNULL,
             stderr=stderr_file,
         )
         logger.info(
             "  Spawned '%s' (PID %d)",
             profile.name,
             proc.pid,
+        )
+        return proc
+
+    def _spawn_process_with_duration(
+        self,
+        profile: Profile,
+        profile_dir: Path,
+        duration_s: int,
+    ) -> subprocess.Popen:
+        """Spawn a bot process with a specific duration (used for restarts)."""
+        env = self._build_env(profile, profile_dir)
+        stderr_path = profile_dir / "stderr.log"
+        stderr_file = open(stderr_path, "a")  # append mode for restarts
+
+        cmd = [
+            sys.executable,
+            str(PROJECT_ROOT / "main.py"),
+            "--dry-run",
+            "--capital",
+            str(self._capital),
+            "--duration",
+            str(duration_s),
+        ]
+
+        proc = subprocess.Popen(
+            cmd,
+            env=env,
+            cwd=str(PROJECT_ROOT),
+            stdout=subprocess.DEVNULL,
+            stderr=stderr_file,
+        )
+        logger.info(
+            "  Respawned '%s' (PID %d, %ds remaining)",
+            profile.name,
+            proc.pid,
+            duration_s,
         )
         return proc
 
@@ -952,12 +1043,65 @@ class MatrixOrchestrator:
 
         return processes
 
+    def _progress_monitor(
+        self,
+        processes: dict[str, subprocess.Popen],
+    ) -> None:
+        """Background thread: periodically snapshot metrics for all profiles."""
+        progress_dir = self._run_dir / "progress"
+        progress_dir.mkdir(exist_ok=True)
+
+        while not self._stop_progress.is_set():
+            self._stop_progress.wait(timeout=self._PROGRESS_INTERVAL_S)
+            if self._stop_progress.is_set():
+                break
+
+            try:
+                analyzer = ResultsAnalyzer(
+                    self._run_dir,
+                    self._profiles,
+                    self._duration_s,
+                    self._capital,
+                )
+                results = analyzer.analyze()
+
+                snapshot = {
+                    "timestamp": datetime.now().isoformat(),
+                    "elapsed_hours": (
+                        (time.monotonic() - self._run_start) / 3600
+                    ),
+                    "profiles": {},
+                }
+                for name, r in results.items():
+                    alive = processes.get(name)
+                    snapshot["profiles"][name] = {
+                        "alive": alive is not None and alive.poll() is None,
+                        "total_trades": r.total_trades,
+                        "natural_resolved": r.natural_resolved_count,
+                        "pnl": round(r.total_pnl, 2),
+                        "win_rate": round(r.real_win_rate * 100, 1),
+                        "open_positions": r.snapshot_count,
+                    }
+
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                path = progress_dir / f"snapshot_{ts}.json"
+                with open(path, "w") as f:
+                    json.dump(snapshot, f, indent=2)
+                logger.info("Progress snapshot saved: %s", path)
+
+            except Exception:
+                logger.exception("Progress snapshot failed")
+
     def _wait_for_completion(
         self,
         processes: dict[str, subprocess.Popen],
     ) -> None:
-        """Wait for all processes to finish, with graceful escalation."""
+        """Wait for all processes to finish, with watchdog and auto-restart."""
         deadline = time.monotonic() + self._duration_s + self._GRACE_PERIOD_S
+        restart_counts: dict[str, int] = {name: 0 for name in processes}
+        start_times: dict[str, float] = {
+            name: time.monotonic() for name in processes
+        }
 
         logger.info(
             "All %d processes running. Waiting up to %ds + %ds grace...",
@@ -966,13 +1110,61 @@ class MatrixOrchestrator:
             int(self._GRACE_PERIOD_S),
         )
 
-        # Poll until deadline
+        # Start progress monitor thread
+        self._stop_progress = threading.Event()
+        self._run_start = time.monotonic()
+        progress_thread = threading.Thread(
+            target=self._progress_monitor,
+            args=(processes,),
+            daemon=True,
+        )
+        progress_thread.start()
+
+        # Poll until deadline with crash detection
         while time.monotonic() < deadline:
+            for name, proc in list(processes.items()):
+                if proc.poll() is not None:
+                    elapsed = time.monotonic() - start_times[name]
+                    remaining = self._duration_s - elapsed
+
+                    if (
+                        remaining > 60
+                        and restart_counts[name] < self._MAX_RESTARTS_PER_PROFILE
+                    ):
+                        exit_code = proc.returncode
+                        restart_counts[name] += 1
+                        logger.warning(
+                            "Profile '%s' crashed (exit=%d, elapsed=%.0fs). "
+                            "Restarting (%d/%d)...",
+                            name,
+                            exit_code,
+                            elapsed,
+                            restart_counts[name],
+                            self._MAX_RESTARTS_PER_PROFILE,
+                        )
+                        # Log last 20 lines of stderr for diagnostics
+                        stderr_path = self._run_dir / name / "stderr.log"
+                        if stderr_path.exists():
+                            tail = stderr_path.read_text().strip().split("\n")[-20:]
+                            for line in tail:
+                                logger.warning("  stderr: %s", line)
+
+                        # Respawn with remaining duration
+                        profile = next(
+                            p for p in self._profiles if p.name == name
+                        )
+                        profile_dir = self._run_dir / name
+                        proc_new = self._spawn_process_with_duration(
+                            profile, profile_dir, int(remaining)
+                        )
+                        processes[name] = proc_new
+                        start_times[name] = time.monotonic()
+
             all_done = all(p.poll() is not None for p in processes.values())
             if all_done:
-                logger.info("All processes completed normally.")
+                logger.info("All processes completed.")
                 break
-            time.sleep(2.0)
+            time.sleep(5.0)
 
         # SIGTERM for stragglers
         for name, proc in processes.items():
@@ -1003,6 +1195,15 @@ class MatrixOrchestrator:
             # Record exit code
             ec_path = self._run_dir / name / ".exit_code"
             ec_path.write_text(str(proc.returncode))
+
+        # Record restart counts
+        for name, count in restart_counts.items():
+            restart_path = self._run_dir / name / ".restart_count"
+            restart_path.write_text(str(count))
+
+        # Stop progress monitor
+        self._stop_progress.set()
+        progress_thread.join(timeout=5)
 
         logger.info("All processes stopped.")
 

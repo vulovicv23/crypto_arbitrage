@@ -18,6 +18,7 @@ import json
 import logging
 import time
 import uuid
+from collections import deque
 from pathlib import Path
 
 from config import AppConfig
@@ -59,7 +60,7 @@ class OrderManager:
 
         # Local order tracking
         self._pending_orders: dict[str, Order] = {}
-        self._filled_orders: list[Order] = []
+        self._filled_orders: deque[Order] = deque(maxlen=5000)
 
         # Trade log path
         self._trade_log = Path(config.logging.log_dir) / config.logging.trade_log_file

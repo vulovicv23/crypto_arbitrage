@@ -73,7 +73,7 @@ size = base * regime_multiplier * strength_multiplier * confidence_multiplier * 
 
 ### Cooldown Logic
 
-After `cooldown_after_losses` consecutive losing trades, a cooldown is triggered for `cooldown_duration_s` seconds. All signals are rejected during cooldown. A winning trade resets the streak.
+After `cooldown_after_losses` consecutive losing trades, a cooldown is triggered for `cooldown_duration_s` seconds. All signals are rejected during cooldown. Only strictly profitable trades (`pnl > 0`) reset the loss streak; break-even trades (`pnl == 0`) leave it unchanged.
 
 ### Daily Reset
 
@@ -89,7 +89,7 @@ At the start of each new trading day:
 |--------|-------------|
 | `check_signal(signal)` | Evaluate signal against all risk checks |
 | `record_fill(position)` | Register a new open position |
-| `record_close(token_id, pnl, volume)` | Record a closed trade, update P&L and capital |
+| `record_close(token_id, pnl, volume)` | Record a closed trade, update P&L, adjust capital by `pnl` |
 
 ### Key Properties
 

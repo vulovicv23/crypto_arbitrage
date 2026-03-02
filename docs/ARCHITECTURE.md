@@ -70,6 +70,12 @@ When new markets are found:
 2. Initial order book snapshots are fetched via REST
 3. New WebSocket subscriptions are created for real-time book updates
 
+When markets expire:
+1. The Bot maintains a persistent `_token_to_condition` reverse mapping (token_id → condition_id) that persists across discovery cycles
+2. Expired tokens are looked up via this mapping and unsubscribed from WebSocket streams
+3. Strategy engine prunes stale order books for tokens no longer in the active market set
+4. PositionResolver prunes contexts and reference prices for expired conditions with no open positions
+
 ### 2. Price Sources (`src/prediction_sources.py`)
 
 Three independent async tasks produce `PriceTick` objects:

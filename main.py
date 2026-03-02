@@ -120,6 +120,9 @@ class Bot:
 
         # Track subscribed token IDs for incremental WS subscription
         self._subscribed_tokens: set[str] = set()
+        # Reverse mapping: token_id → condition_id (persists across discovery
+        # cycles so we can look up expired tokens after they leave active_markets)
+        self._token_to_condition: dict[str, str] = {}
 
         # Whether the Polymarket client is connected (WS + REST).
         # In dry-run mode we attempt connection but fall back to synthetic
@@ -558,6 +561,9 @@ class Bot:
         for m in self._discovery.active_markets.values():
             token_mapping[m.yes_token_id] = m.condition_id
             token_mapping[m.no_token_id] = m.condition_id
+            # Keep persistent reverse mapping for unsubscribe after expiry
+            self._token_to_condition[m.yes_token_id] = m.condition_id
+            self._token_to_condition[m.no_token_id] = m.condition_id
 
             # Build MarketContext for the strategy's probability model
             ctx = MarketContext(
@@ -621,13 +627,14 @@ class Bot:
 
         # ── Unsubscribe from expired markets ───────────────────────────
         if expired_ids and self._poly_connected and self._poly_client:
+            expired_set = set(expired_ids)
             expired_token_ids: list[str] = []
-            for cid in expired_ids:
-                tokens_to_remove = [tid for tid, c in token_mapping.items() if c == cid]
-                for tid in list(self._subscribed_tokens):
-                    if tid in tokens_to_remove:
-                        expired_token_ids.append(tid)
-                        self._subscribed_tokens.discard(tid)
+            for tid in list(self._subscribed_tokens):
+                cid = self._token_to_condition.get(tid)
+                if cid and cid in expired_set:
+                    expired_token_ids.append(tid)
+                    self._subscribed_tokens.discard(tid)
+                    del self._token_to_condition[tid]
 
             if expired_token_ids:
                 logger.info(

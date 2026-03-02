@@ -38,7 +38,7 @@ Polymarket CLOB API connection and authentication.
 | `private_key` | `POLY_PRIVATE_KEY` | (required) | Ethereum private key for order signing |
 | `btc_condition_ids` | `POLY_BTC_CONDITION_IDS` | (required) | Comma-separated condition IDs to monitor |
 
-**Validation:** `POLY_API_KEY`, `POLY_PRIVATE_KEY`, and at least one `POLY_BTC_CONDITION_IDS` are required. In `--dry-run` mode, missing keys are allowed.
+**Validation:** `POLY_API_KEY` and `POLY_PRIVATE_KEY` are required. `POLY_BTC_CONDITION_IDS` is required only when `DISCOVERY_ENABLED=false`.
 
 ## PredictionSourcesConfig
 
@@ -137,3 +137,16 @@ ML prediction pipeline (optional, disabled by default).
 | `min_confidence` | `ML_MIN_CONFIDENCE` | 0.1 | Minimum confidence to emit signal |
 | `max_predicted_return` | `ML_MAX_PREDICTED_RETURN` | 0.01 (1%) | Cap on predicted price magnitude |
 | `horizon_s` | `ML_HORIZON_S` | 300 (5 min) | Prediction horizon matching training labels |
+
+## Startup Validation
+
+`load_config()` calls `_validate()` which performs comprehensive semantic checks. The bot fails fast with clear error messages if any constraint is violated.
+
+| Category | Checks |
+|----------|--------|
+| **Auth** | `POLY_API_KEY` and `POLY_PRIVATE_KEY` required; condition IDs required when discovery disabled |
+| **Strategy** | `min_edge > 0`, `max_edge > min_edge`, `max_spread ∈ (0, 1)`, `near_expiry_s < far_expiry_s` |
+| **Risk** | All percentage params in `(0, 1)`, `max_open_positions ≥ 1`, `cooldown_after_losses ≥ 1`, `cooldown_duration_s > 0` |
+| **Execution** | `max_latency_ms > 0`, `max_orders_per_second ≥ 1` |
+| **Fees** | `taker_fee_pct ∈ [0, 1)`, `maker_fee_pct ∈ [0, 1)` |
+| **ML** | When enabled: `feature_window ≥ 100`, `prediction_interval > 0`, `min_confidence ∈ [0, 1]` |

@@ -333,3 +333,56 @@ def _validate(cfg: AppConfig) -> None:
             "POLY_BTC_CONDITION_IDS must list at least one condition ID "
             "when auto-discovery is disabled (DISCOVERY_ENABLED=false)."
         )
+
+    # Strategy thresholds
+    s = cfg.strategy
+    if s.min_edge_threshold <= 0:
+        raise ValueError("MIN_EDGE_THRESHOLD must be positive")
+    if s.max_edge_threshold <= s.min_edge_threshold:
+        raise ValueError("MAX_EDGE_THRESHOLD must be greater than MIN_EDGE_THRESHOLD")
+    if s.max_spread <= 0 or s.max_spread >= 1.0:
+        raise ValueError("MAX_SPREAD must be between 0 and 1")
+
+    # Risk parameters
+    r = cfg.risk
+    if not 0 < r.max_position_pct < 1:
+        raise ValueError("MAX_POSITION_PCT must be between 0 and 1")
+    if not 0 < r.max_daily_loss_pct < 1:
+        raise ValueError("MAX_DAILY_LOSS_PCT must be between 0 and 1")
+    if not 0 < r.max_total_exposure_pct <= 1:
+        raise ValueError("MAX_TOTAL_EXPOSURE_PCT must be between 0 and 1")
+    if r.max_open_positions < 1:
+        raise ValueError("MAX_OPEN_POSITIONS must be at least 1")
+    if r.cooldown_after_losses < 1:
+        raise ValueError("COOLDOWN_AFTER_LOSSES must be at least 1")
+    if r.cooldown_duration_s <= 0:
+        raise ValueError("COOLDOWN_DURATION_S must be positive")
+
+    # Execution
+    e = cfg.execution
+    if e.max_latency_ms <= 0:
+        raise ValueError("MAX_LATENCY_MS must be positive")
+    if e.max_orders_per_second < 1:
+        raise ValueError("MAX_ORDERS_PER_SECOND must be at least 1")
+
+    # Fees
+    f = cfg.fees
+    if f.taker_fee_pct < 0 or f.taker_fee_pct >= 1:
+        raise ValueError("TAKER_FEE_PCT must be between 0 and 1")
+    if f.maker_fee_pct < 0 or f.maker_fee_pct >= 1:
+        raise ValueError("MAKER_FEE_PCT must be between 0 and 1")
+
+    # ML config
+    m = cfg.ml
+    if m.enabled:
+        if m.feature_window < 100:
+            raise ValueError("ML_FEATURE_WINDOW must be at least 100")
+        if m.prediction_interval <= 0:
+            raise ValueError("ML_PREDICTION_INTERVAL must be positive")
+        if not 0 <= m.min_confidence <= 1:
+            raise ValueError("ML_MIN_CONFIDENCE must be between 0 and 1")
+
+    # Expiry buckets
+    if s.expiry_buckets_enabled:
+        if s.near_expiry_s >= s.far_expiry_s:
+            raise ValueError("NEAR_EXPIRY_S must be less than FAR_EXPIRY_S")

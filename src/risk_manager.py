@@ -144,7 +144,9 @@ class RiskManager:
                     self._state.consecutive_losses,
                     self._cfg.cooldown_duration_s,
                 )
-        else:
+        elif pnl > 0:
+            # Only strictly profitable trades reset the loss streak;
+            # break-even trades (pnl == 0) do not reset it.
             self._state.consecutive_losses = 0
 
     # ── sizing ────────────────────────────────────────────────────────

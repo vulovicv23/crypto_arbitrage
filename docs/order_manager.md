@@ -53,7 +53,7 @@ After submission, spawns an async task (`_track_order`) that polls for fill stat
 1. Mark order as `FILLED`
 2. Create `Position` and register with risk manager
 3. Log trade to JSONL file
-4. Move from pending to filled list
+4. Move from pending to filled deque (bounded, `maxlen=5000`)
 
 **On timeout:**
 1. Cancel the stale order on exchange
