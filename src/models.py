@@ -215,6 +215,7 @@ class Position:
     size: float
     opened_ns: int = field(default_factory=_now_ns)
     unrealized_pnl: float = 0.0
+    order_id: str = ""  # Links to Order.order_id for resolution tracking
 
     def update_pnl(self, current_price: float) -> None:
         if self.side == Side.BUY:

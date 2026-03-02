@@ -246,6 +246,21 @@ class DryRunConfig:
 
 
 # ---------------------------------------------------------------------------
+# Fees
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class FeeConfig:
+    """Polymarket fee parameters.
+
+    Polymarket charges a percentage fee on the PROFIT portion of trades.
+    Losing trades pay no fee.  Maker orders get a reduced rate.
+    """
+
+    taker_fee_pct: float = float(os.getenv("TAKER_FEE_PCT", "0.02"))  # 2%
+    maker_fee_pct: float = float(os.getenv("MAKER_FEE_PCT", "0.01"))  # 1%
+
+
+# ---------------------------------------------------------------------------
 # Machine Learning
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
@@ -295,6 +310,7 @@ class AppConfig:
     risk: RiskConfig = field(default_factory=RiskConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     dry_run: DryRunConfig = field(default_factory=DryRunConfig)
+    fees: FeeConfig = field(default_factory=FeeConfig)
     ml: MLConfig = field(default_factory=MLConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
 

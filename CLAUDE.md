@@ -207,6 +207,10 @@ HTTP_POOL_SIZE=20
 # Logging
 LOG_LEVEL=INFO
 
+# Fees (charged on profit only)
+TAKER_FEE_PCT=0.02
+MAKER_FEE_PCT=0.01
+
 # ML Prediction (optional, disabled by default)
 ML_ENABLED=false
 ML_MODEL_PATH=models/btc_5m_v3.pkl

@@ -60,10 +60,18 @@ class ProfileResult:
     total_trades: int = 0
     total_volume: float = 0.0
     trades_per_hour: float = 0.0
-    # PnL
+    # PnL (real = from resolution records; falls back to edge×size if unresolved)
     total_pnl: float = 0.0
     avg_edge: float = 0.0
     median_edge: float = 0.0
+    # Resolution-based metrics
+    resolved_count: int = 0
+    force_resolved_count: int = 0
+    unresolved_count: int = 0
+    real_win_count: int = 0
+    real_loss_count: int = 0
+    real_win_rate: float = 0.0
+    total_fees: float = 0.0
     # Latency
     avg_latency_ms: float = 0.0
     # Risk
@@ -279,11 +287,16 @@ class ResultsAnalyzer:
         self,
         name: str,
         description: str,
-        trades: list[dict],
+        records: list[dict],
         exit_code: int,
         error: str,
     ) -> ProfileResult:
-        """Compute all metrics from trade records."""
+        """Compute all metrics from trade records (entries + resolutions).
+
+        When resolution records are present (type=resolution), we use real
+        PnL (pnl_net, after fees) instead of theoretical edge × size.
+        For entries without a matching resolution, we fall back to edge × size.
+        """
         result = ProfileResult(
             profile_name=name,
             description=description,
@@ -291,16 +304,66 @@ class ResultsAnalyzer:
             error=error,
         )
 
-        if not trades:
+        if not records:
             return result
 
-        edges = [t.get("edge", 0.0) for t in trades]
-        sizes = [t.get("fill_size", t.get("size", 0.0)) for t in trades]
-        latencies = [t.get("latency_ms", 0.0) for t in trades]
-        expiry_times = [t.get("seconds_to_expiry", 0.0) for t in trades]
+        # Separate entries from resolutions
+        entries: list[dict] = []
+        resolutions: dict[str, dict] = {}  # order_id -> resolution record
+        for rec in records:
+            rec_type = rec.get("type", "entry")  # backward compat: no type = entry
+            if rec_type == "resolution":
+                oid = rec.get("order_id", "")
+                if oid:
+                    resolutions[oid] = rec
+            else:
+                entries.append(rec)
 
-        # Expected PnL per trade: edge × fill_size
-        pnl_per_trade = [e * s for e, s in zip(edges, sizes)]
+        if not entries:
+            return result
+
+        # Build per-trade PnL: prefer real resolution over edge×size
+        pnl_per_trade: list[float] = []
+        edges: list[float] = []
+        sizes: list[float] = []
+        latencies: list[float] = []
+        expiry_times: list[float] = []
+        total_fees = 0.0
+        resolved_count = 0
+        force_resolved_count = 0
+        unresolved_count = 0
+        real_win_count = 0
+        real_loss_count = 0
+
+        for entry in entries:
+            edge = entry.get("edge", 0.0)
+            size = entry.get("fill_size", entry.get("size", 0.0))
+            edges.append(edge)
+            sizes.append(size)
+            latencies.append(entry.get("latency_ms", 0.0))
+            expiry_times.append(entry.get("seconds_to_expiry", 0.0))
+
+            order_id = entry.get("order_id", "")
+            resolution = resolutions.get(order_id) if order_id else None
+
+            if resolution is not None:
+                # Use real PnL from resolution (after fees)
+                pnl_net = resolution.get("pnl_net", 0.0)
+                fee = resolution.get("fee", 0.0)
+                pnl_per_trade.append(pnl_net)
+                total_fees += fee
+                resolved_count += 1
+                if resolution.get("force_resolved", False):
+                    force_resolved_count += 1
+                if pnl_net > 0:
+                    real_win_count += 1
+                else:
+                    real_loss_count += 1
+            else:
+                # Fallback: theoretical edge × size
+                pnl_per_trade.append(edge * size)
+                unresolved_count += 1
+
         total_pnl = sum(pnl_per_trade)
 
         # Cumulative PnL for drawdown
@@ -317,7 +380,7 @@ class ResultsAnalyzer:
         regime_dist: dict[str, int] = {}
         strength_dist: dict[str, int] = {}
         outcome_dist: dict[str, int] = {}
-        for t in trades:
+        for t in entries:
             r = t.get("regime", "UNKNOWN")
             s = t.get("strength", "UNKNOWN")
             o = t.get("outcome", "UNKNOWN")
@@ -325,10 +388,10 @@ class ResultsAnalyzer:
             strength_dist[s] = strength_dist.get(s, 0) + 1
             outcome_dist[o] = outcome_dist.get(o, 0) + 1
 
-        result.total_trades = len(trades)
+        result.total_trades = len(entries)
         result.total_volume = sum(sizes)
         result.trades_per_hour = (
-            len(trades) / duration_hours if duration_hours > 0 else 0.0
+            len(entries) / duration_hours if duration_hours > 0 else 0.0
         )
         result.total_pnl = total_pnl
         result.avg_edge = sum(edges) / len(edges)
@@ -343,6 +406,17 @@ class ResultsAnalyzer:
         result.regime_distribution = regime_dist
         result.strength_distribution = strength_dist
         result.outcome_distribution = outcome_dist
+
+        # Resolution-specific fields
+        result.resolved_count = resolved_count
+        result.force_resolved_count = force_resolved_count
+        result.unresolved_count = unresolved_count
+        result.real_win_count = real_win_count
+        result.real_loss_count = real_loss_count
+        result.real_win_rate = (
+            real_win_count / resolved_count if resolved_count > 0 else 0.0
+        )
+        result.total_fees = total_fees
 
         return result
 
@@ -394,20 +468,32 @@ class ResultsAnalyzer:
         if not active:
             return
 
+        # Check if resolution data is available (any profile has resolutions)
+        has_resolutions = any(r.resolved_count > 0 for r in active.values())
+
         weights = {
-            "sharpe": 0.25,
-            "pnl": 0.25,
+            "sharpe": 0.20,
+            "pnl": 0.20,
             "profit_factor": 0.15,
             "drawdown": 0.15,  # inverted: lower is better
+            "win_rate": 0.15,
             "trades_per_hour": 0.10,
-            "avg_edge": 0.10,
+            "avg_edge": 0.05,
         }
+
+        # When no resolution data, redistribute win_rate weight
+        if not has_resolutions:
+            weights["win_rate"] = 0.0
+            weights["sharpe"] = 0.25
+            weights["pnl"] = 0.25
+            weights["avg_edge"] = 0.10
 
         raw: dict[str, list[float]] = {
             "sharpe": [r.sharpe_ratio for r in active.values()],
             "pnl": [r.total_pnl for r in active.values()],
             "profit_factor": [min(r.profit_factor, 100.0) for r in active.values()],
             "drawdown": [r.max_drawdown for r in active.values()],
+            "win_rate": [r.real_win_rate for r in active.values()],
             "trades_per_hour": [r.trades_per_hour for r in active.values()],
             "avg_edge": [r.avg_edge for r in active.values()],
         }
@@ -424,6 +510,7 @@ class ResultsAnalyzer:
             "pnl": normalize(raw["pnl"]),
             "profit_factor": normalize(raw["profit_factor"]),
             "drawdown": normalize(raw["drawdown"], invert=True),
+            "win_rate": normalize(raw["win_rate"]),
             "trades_per_hour": normalize(raw["trades_per_hour"]),
             "avg_edge": normalize(raw["avg_edge"]),
         }
@@ -455,19 +542,24 @@ class ReportGenerator:
             reverse=True,
         )
 
+        # Detect if any profile has resolution data
+        has_resolutions = any(r.resolved_count > 0 for r in ranked)
+        pnl_label = "Real PnL" if has_resolutions else "Exp. PnL"
+
         header = (
-            f"\n{'=' * 110}\n"
+            f"\n{'=' * 125}\n"
             f"  PARALLEL TEST MATRIX — RESULTS  (run: {run_id})\n"
             f"  Duration: {duration_s}s | Capital: ${capital:,.2f} "
             f"| Profiles: {len(ranked)}\n"
-            f"{'=' * 110}\n"
+            f"{'=' * 125}\n"
         )
         print(header)
 
         # Table header
         fmt = (
             "  {rank:<4} {name:<18} {trades:>7} {volume:>10} {pnl:>10} "
-            "{edge:>9} {sharpe:>8} {dd:>10} {pf:>7} {tph:>8} {score:>7}"
+            "{wr:>6} {fees:>8} {edge:>9} {sharpe:>8} {dd:>10} {pf:>7} "
+            "{tph:>8} {score:>7}"
         )
         print(
             fmt.format(
@@ -475,7 +567,9 @@ class ReportGenerator:
                 name="Profile",
                 trades="Trades",
                 volume="Volume",
-                pnl="Exp. PnL",
+                pnl=pnl_label,
+                wr="WR%",
+                fees="Fees",
                 edge="Avg Edge",
                 sharpe="Sharpe",
                 dd="Max DD",
@@ -484,11 +578,13 @@ class ReportGenerator:
                 score="Score",
             )
         )
-        print(f"  {'-' * 106}")
+        print(f"  {'-' * 121}")
 
         for i, r in enumerate(ranked, 1):
             pf_str = f"{r.profit_factor:.1f}" if r.profit_factor < 1000 else "∞"
             err_flag = " ⚠" if r.error else ""
+            wr_str = f"{r.real_win_rate * 100:.1f}" if r.resolved_count > 0 else "—"
+            fees_str = f"${r.total_fees:.2f}" if r.total_fees > 0 else "—"
             print(
                 fmt.format(
                     rank=f"#{i}",
@@ -496,6 +592,8 @@ class ReportGenerator:
                     trades=str(r.total_trades),
                     volume=f"${r.total_volume:,.2f}",
                     pnl=f"${r.total_pnl:,.2f}",
+                    wr=wr_str,
+                    fees=fees_str,
                     edge=f"{r.avg_edge:.4f}",
                     sharpe=f"{r.sharpe_ratio:.2f}",
                     dd=f"${r.max_drawdown:,.2f}",
@@ -505,11 +603,23 @@ class ReportGenerator:
                 )
             )
 
+        # Resolution summary
+        if has_resolutions:
+            total_resolved = sum(r.resolved_count for r in ranked)
+            total_force = sum(r.force_resolved_count for r in ranked)
+            total_unresolved = sum(r.unresolved_count for r in ranked)
+            total_entries = sum(r.total_trades for r in ranked)
+            print(
+                f"\n  Resolution: {total_resolved}/{total_entries} entries resolved "
+                f"({total_force} force-resolved at shutdown, "
+                f"{total_unresolved} unresolved → fallback edge×size)"
+            )
+
         if ranked and ranked[0].total_trades > 0:
             print(f"\n  🏆 Best profile: {ranked[0].profile_name}")
             print(f"     {ranked[0].description}")
 
-        print(f"\n{'=' * 110}\n")
+        print(f"\n{'=' * 125}\n")
 
     @staticmethod
     def save_json(
@@ -550,25 +660,43 @@ class ReportGenerator:
             reverse=True,
         )
 
+        has_resolutions = any(r.resolved_count > 0 for r in ranked)
+        pnl_label = "Real PnL" if has_resolutions else "Exp. PnL"
+
         lines: list[str] = [
             f"# Test Matrix Report — {run_id}\n",
             f"**Duration:** {duration_s}s | "
             f"**Capital:** ${capital:,.2f} | "
             f"**Profiles:** {len(ranked)}\n",
             "## Ranking\n",
-            "| Rank | Profile | Trades | Exp. PnL | Avg Edge | Sharpe "
-            "| Max DD | PF | Score |",
-            "|------|---------|--------|----------|----------|--------"
-            "|--------|-----|-------|",
+            f"| Rank | Profile | Trades | {pnl_label} | WR% | Fees "
+            "| Avg Edge | Sharpe | Max DD | PF | Score |",
+            "|------|---------|--------|----------|------|------"
+            "|----------|--------|--------|-----|-------|",
         ]
 
         for i, r in enumerate(ranked, 1):
             pf = f"{r.profit_factor:.1f}" if r.profit_factor < 1000 else "∞"
+            wr = f"{r.real_win_rate * 100:.1f}%" if r.resolved_count > 0 else "—"
+            fees = f"${r.total_fees:.2f}" if r.total_fees > 0 else "—"
             lines.append(
                 f"| #{i} | {r.profile_name} | {r.total_trades} "
-                f"| ${r.total_pnl:,.2f} | {r.avg_edge:.4f} "
+                f"| ${r.total_pnl:,.2f} | {wr} | {fees} "
+                f"| {r.avg_edge:.4f} "
                 f"| {r.sharpe_ratio:.2f} | ${r.max_drawdown:,.2f} "
                 f"| {pf} | {r.composite_score:.4f} |"
+            )
+
+        # Resolution summary
+        if has_resolutions:
+            total_resolved = sum(r.resolved_count for r in ranked)
+            total_force = sum(r.force_resolved_count for r in ranked)
+            total_unresolved = sum(r.unresolved_count for r in ranked)
+            total_entries = sum(r.total_trades for r in ranked)
+            lines.append(
+                f"\n> **Resolution:** {total_resolved}/{total_entries} entries "
+                f"resolved ({total_force} force-resolved at shutdown, "
+                f"{total_unresolved} unresolved → fallback edge×size)\n"
             )
 
         lines.append("\n## Per-Profile Details\n")
@@ -580,7 +708,22 @@ class ReportGenerator:
                 lines.append(f"**Error:** `{r.error[:200]}`\n")
             lines.append(f"- **Trades:** {r.total_trades}")
             lines.append(f"- **Volume:** ${r.total_volume:,.2f}")
-            lines.append(f"- **Expected PnL:** ${r.total_pnl:,.2f}")
+            lines.append(f"- **{pnl_label}:** ${r.total_pnl:,.2f}")
+            if r.resolved_count > 0:
+                lines.append(
+                    f"- **Win Rate:** {r.real_win_rate * 100:.1f}% "
+                    f"({r.real_win_count}W / {r.real_loss_count}L)"
+                )
+                lines.append(f"- **Total Fees:** ${r.total_fees:.2f}")
+                lines.append(
+                    f"- **Resolved:** {r.resolved_count} "
+                    f"({r.force_resolved_count} force-resolved)"
+                )
+                if r.unresolved_count > 0:
+                    lines.append(
+                        f"- **Unresolved:** {r.unresolved_count} "
+                        "(PnL from edge×size fallback)"
+                    )
             lines.append(f"- **Avg Edge:** {r.avg_edge:.4f}")
             lines.append(f"- **Median Edge:** {r.median_edge:.4f}")
             lines.append(f"- **Avg Latency:** {r.avg_latency_ms:.1f}ms")

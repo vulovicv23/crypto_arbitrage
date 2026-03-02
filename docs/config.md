@@ -18,6 +18,7 @@ class AppConfig:
     risk: RiskConfig
     execution: ExecutionConfig
     dry_run: DryRunConfig
+    fees: FeeConfig
     ml: MLConfig
     logging: LoggingConfig
 ```
@@ -113,6 +114,15 @@ Logging setup.
 | `trade_log_file` | — | `trades.jsonl` | Trade log (JSON lines) |
 | `max_bytes` | — | 50,000,000 (50MB) | Max log file size |
 | `backup_count` | — | 10 | Number of rotated backups |
+
+## FeeConfig
+
+Polymarket fee modeling. Fees are charged only on the profit portion of trades (losing trades pay no fee).
+
+| Parameter | Env Var | Default | Description |
+|-----------|---------|---------|-------------|
+| `taker_fee_pct` | `TAKER_FEE_PCT` | 0.02 (2%) | Taker fee rate on profit |
+| `maker_fee_pct` | `MAKER_FEE_PCT` | 0.01 (1%) | Maker fee rate on profit |
 
 ## MLConfig
 

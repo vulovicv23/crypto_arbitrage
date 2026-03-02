@@ -70,10 +70,15 @@ Submits the opposite side order. Returns realized P&L or None on failure.
 
 ### Trade Logging
 
-Each filled trade is appended as a JSON line to `logs/trades.jsonl`:
+The trade log (`logs/trades.jsonl`) contains two record types, distinguished by the `"type"` field:
+
+#### Entry Records (`"type": "entry"`)
+
+Written when an order is filled:
 
 ```json
 {
+  "type": "entry",
   "ts": 1234567890.123,
   "order_id": "uuid",
   "exchange_id": "exchange-uuid",
@@ -92,6 +97,33 @@ Each filled trade is appended as a JSON line to `logs/trades.jsonl`:
   "pred_confidence": 0.82
 }
 ```
+
+#### Resolution Records (`"type": "resolution"`)
+
+Written when a position is resolved at market expiry (paper mode) by `PositionResolver`:
+
+```json
+{
+  "type": "resolution",
+  "ts": 1234567890.123,
+  "order_id": "uuid",
+  "condition_id": "...",
+  "token_id": "...",
+  "side": "BUY",
+  "entry_price": 0.65,
+  "size": 25.0,
+  "settlement": 1.0,
+  "pnl_gross": 8.75,
+  "fee": 0.175,
+  "pnl_net": 8.575,
+  "btc_ref": 95000.0,
+  "btc_final": 95100.0,
+  "outcome": "WIN",
+  "force_resolved": false
+}
+```
+
+Resolutions are linked to entries via `order_id`. The `force_resolved` flag indicates positions closed at bot shutdown rather than at natural market expiry.
 
 ### Emergency
 

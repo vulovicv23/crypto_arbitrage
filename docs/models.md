@@ -109,6 +109,7 @@ Tracks an open position.
 | `entry_price` | `float` | Entry price |
 | `size` | `float` | Position size |
 | `unrealized_pnl` | `float` | Current unrealized P&L |
+| `order_id` | `str` | Links to `Order.order_id` for resolution tracking (default: `""`) |
 
 Method: `update_pnl(current_price)` — Recalculate unrealized P&L.
 

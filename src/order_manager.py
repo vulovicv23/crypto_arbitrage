@@ -226,6 +226,7 @@ class OrderManager:
                         side=order.side,
                         entry_price=order.fill_price,
                         size=order.fill_size,
+                        order_id=order.order_id,
                     )
                     self._risk.record_fill(position)
 
@@ -294,6 +295,7 @@ class OrderManager:
     def _log_trade(self, order: Order, signal: Signal) -> None:
         """Append a structured trade record to the JSONL trade log."""
         record = {
+            "type": "entry",
             "ts": time.time(),
             "order_id": order.order_id,
             "exchange_id": order.exchange_order_id,

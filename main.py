@@ -51,9 +51,11 @@ import signal
 import sys
 import time
 
+import json
 import random
+from pathlib import Path
 
-from config import AppConfig, load_config
+from config import AppConfig, FeeConfig, load_config
 from src.logger_setup import setup_logging
 from src.market_discovery import DiscoveredMarket, MarketDiscovery
 from src.models import (
@@ -241,10 +243,16 @@ class Bot:
 
         # ── Position resolver (paper mode: auto-close at market expiry) ─
         if self._dry_run:
+            trade_log_path = (
+                Path(self._cfg.logging.log_dir) / self._cfg.logging.trade_log_file
+            )
             self._position_resolver = PositionResolver(
                 risk_manager=self._risk_manager,
                 get_btc_price=self._get_btc_price,
                 poll_interval=1.0,
+                trade_log=trade_log_path,
+                fee_config=self._cfg.fees,
+                is_maker=self._cfg.strategy.maker_mode,
             )
 
         # ── Prediction sources ────────────────────────────────────────
@@ -825,10 +833,18 @@ class PositionResolver:
         risk_manager: RiskManager,
         get_btc_price,
         poll_interval: float = 1.0,
+        trade_log: Path | None = None,
+        fee_config: FeeConfig | None = None,
+        is_maker: bool = False,
     ):
         self._risk = risk_manager
         self._get_btc_price = get_btc_price
         self._poll_interval = poll_interval
+
+        # Resolution logging & fee modelling
+        self._trade_log = trade_log
+        self._fee_config = fee_config or FeeConfig()
+        self._is_maker = is_maker
 
         # condition_id -> reference BTC price recorded at market discovery
         self._reference_prices: dict[str, float] = {}
@@ -842,6 +858,7 @@ class PositionResolver:
         self._total_won = 0
         self._total_lost = 0
         self._cumulative_pnl = 0.0
+        self._total_fees = 0.0
 
     def set_market_contexts(self, contexts: dict[str, MarketContext]) -> None:
         """Merge new market contexts (accumulates; never drops old ones).
@@ -891,12 +908,69 @@ class PositionResolver:
         for token_id, position, ctx in to_close:
             self._resolve_position(token_id, position, ctx, btc_price)
 
+    def _compute_fee(self, pnl_gross: float) -> float:
+        """Compute Polymarket fee: charged only on the profit portion.
+
+        Losing trades pay zero fee. Winning trades pay a percentage of
+        the profit (taker or maker rate depending on order type).
+        """
+        if pnl_gross <= 0:
+            return 0.0
+        fee_rate = (
+            self._fee_config.maker_fee_pct
+            if self._is_maker
+            else self._fee_config.taker_fee_pct
+        )
+        return pnl_gross * fee_rate
+
+    def _write_resolution(
+        self,
+        position: Position,
+        ctx: MarketContext,
+        settlement: float,
+        pnl_gross: float,
+        fee: float,
+        pnl_net: float,
+        btc_ref: float,
+        btc_final: float,
+        force_resolved: bool,
+    ) -> None:
+        """Append a resolution record to the JSONL trade log."""
+        if self._trade_log is None:
+            return
+        outcome = ctx.token_outcome(position.token_id)
+        record = {
+            "type": "resolution",
+            "ts": time.time(),
+            "order_id": position.order_id,
+            "condition_id": position.condition_id,
+            "token_id": position.token_id,
+            "side": position.side.value,
+            "entry_price": position.entry_price,
+            "size": position.size,
+            "settlement": settlement,
+            "pnl_gross": round(pnl_gross, 6),
+            "fee": round(fee, 6),
+            "pnl_net": round(pnl_net, 6),
+            "btc_ref": btc_ref,
+            "btc_final": btc_final,
+            "outcome": outcome.value if outcome else "?",
+            "force_resolved": force_resolved,
+        }
+        try:
+            self._trade_log.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._trade_log, "a") as f:
+                f.write(json.dumps(record) + "\n")
+        except Exception:
+            logger.exception("Resolution log write failed")
+
     def _resolve_position(
         self,
         token_id: str,
         position: Position,
         ctx: MarketContext,
         current_btc_price: float,
+        force_resolved: bool = False,
     ) -> None:
         ref_price = self._reference_prices.get(ctx.condition_id)
         if ref_price is None or ref_price <= 0:
@@ -905,6 +979,17 @@ class PositionResolver:
                 ctx.condition_id[:12],
             )
             self._risk.record_close(token_id, 0.0, position.size)
+            self._write_resolution(
+                position,
+                ctx,
+                settlement=position.entry_price,
+                pnl_gross=0.0,
+                fee=0.0,
+                pnl_net=0.0,
+                btc_ref=0.0,
+                btc_final=current_btc_price,
+                force_resolved=force_resolved,
+            )
             self._total_resolved += 1
             return
 
@@ -919,38 +1004,60 @@ class PositionResolver:
             settlement = position.entry_price  # unknown, no P&L
 
         if position.side == Side.BUY:
-            pnl = (settlement - position.entry_price) * position.size
+            pnl_gross = (settlement - position.entry_price) * position.size
         else:
-            pnl = (position.entry_price - settlement) * position.size
+            pnl_gross = (position.entry_price - settlement) * position.size
 
-        self._risk.record_close(token_id, pnl, position.size)
+        # Apply Polymarket fee (charged only on profit)
+        fee = self._compute_fee(pnl_gross)
+        pnl_net = pnl_gross - fee
+
+        self._risk.record_close(token_id, pnl_net, position.size)
+
+        # Write resolution record to trade log
+        self._write_resolution(
+            position,
+            ctx,
+            settlement=settlement,
+            pnl_gross=pnl_gross,
+            fee=fee,
+            pnl_net=pnl_net,
+            btc_ref=ref_price,
+            btc_final=current_btc_price,
+            force_resolved=force_resolved,
+        )
 
         self._total_resolved += 1
-        self._cumulative_pnl += pnl
-        if pnl > 0:
+        self._cumulative_pnl += pnl_net
+        self._total_fees += fee
+        if pnl_net > 0:
             self._total_won += 1
         else:
             self._total_lost += 1
 
         btc_change_pct = (current_btc_price - ref_price) / ref_price * 100
-        result = "WIN" if pnl > 0 else "LOSS"
+        result = "WIN" if pnl_net > 0 else "LOSS"
         outcome_str = outcome.value if outcome else "?"
 
         logger.info(
-            "RESOLVED %s: %s %s %s settle=%.2f entry=%.4f pnl=%+.4f "
-            "size=%.2f btc_ref=%.2f now=%.2f (%+.3f%% %s)",
+            "RESOLVED %s: %s %s %s settle=%.2f entry=%.4f "
+            "pnl_gross=%+.4f fee=%.4f pnl_net=%+.4f "
+            "size=%.2f btc_ref=%.2f now=%.2f (%+.3f%% %s)%s",
             result,
             position.side.value,
             outcome_str,
             token_id[:12],
             settlement,
             position.entry_price,
-            pnl,
+            pnl_gross,
+            fee,
+            pnl_net,
             position.size,
             ref_price,
             current_btc_price,
             btc_change_pct,
             "UP" if btc_went_up else "DOWN",
+            " [FORCE]" if force_resolved else "",
         )
 
     def force_resolve_all(self) -> None:
@@ -982,7 +1089,13 @@ class PositionResolver:
                 self._risk.record_close(token_id, 0.0, position.size)
                 self._total_resolved += 1
                 continue
-            self._resolve_position(token_id, position, ctx, btc_price)
+            self._resolve_position(
+                token_id,
+                position,
+                ctx,
+                btc_price,
+                force_resolved=True,
+            )
 
     def stats(self) -> dict:
         return {
@@ -990,6 +1103,7 @@ class PositionResolver:
             "won": self._total_won,
             "lost": self._total_lost,
             "cumulative_pnl": self._cumulative_pnl,
+            "total_fees": self._total_fees,
             "tracked_conditions": len(self._reference_prices),
         }
 
@@ -1085,6 +1199,7 @@ class DryRunOrderManager(OrderManager):
             side=order.side,
             entry_price=order.fill_price,
             size=order.fill_size,
+            order_id=order.order_id,
         )
         self._risk.record_fill(position)
         self._log_trade(order, signal)

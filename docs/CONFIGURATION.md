@@ -19,10 +19,11 @@ All configuration is defined as frozen (immutable) dataclasses in `config.py`. V
 7. [RiskConfig](#riskconfig)
 8. [ExecutionConfig](#executionconfig)
 9. [DryRunConfig](#dryrunconfig)
-10. [MLConfig](#mlconfig)
-11. [LoggingConfig](#loggingconfig)
-12. [Validation Rules](#validation-rules)
-13. [Complete Environment Variable Reference](#complete-environment-variable-reference)
+10. [FeeConfig](#feeconfig)
+11. [MLConfig](#mlconfig)
+12. [LoggingConfig](#loggingconfig)
+13. [Validation Rules](#validation-rules)
+14. [Complete Environment Variable Reference](#complete-environment-variable-reference)
 
 ---
 
@@ -56,6 +57,7 @@ class AppConfig:
     risk: RiskConfig
     execution: ExecutionConfig
     dry_run: DryRunConfig
+    fees: FeeConfig
     ml: MLConfig
     logging: LoggingConfig
 ```
@@ -197,6 +199,19 @@ Controls order submission latency and retry behavior.
 
 ---
 
+## FeeConfig
+
+Controls fee modeling for position P&L calculations. Polymarket charges a percentage fee on the **profit portion** of trades only — losing trades pay no fee. Maker orders receive a reduced rate.
+
+| Field            | Env Variable     | Type    | Default | Description                              |
+|------------------|------------------|---------|---------|------------------------------------------|
+| `taker_fee_pct`  | `TAKER_FEE_PCT`  | `float` | `0.02`  | Taker fee rate on profit (2%)            |
+| `maker_fee_pct`  | `MAKER_FEE_PCT`  | `float` | `0.01`  | Maker fee rate on profit (1%)            |
+
+**Fee calculation:** `fee = max(0, pnl_gross) × fee_rate`. The fee rate used depends on `StrategyConfig.maker_mode`: maker mode uses `maker_fee_pct`, otherwise `taker_fee_pct`.
+
+---
+
 ## MLConfig
 
 Controls the optional ML prediction pipeline. Disabled by default — when enabled, adds a parallel LightGBM-based predictor alongside the existing PredictionAggregator.
@@ -297,6 +312,8 @@ All configurable environment variables in one table:
 | `MAX_LATENCY_MS`            | `ExecutionConfig`       | `int`       | `100`      | No       | Max signal age (ms)                            |
 | `MAX_ORDERS_PER_SECOND`     | `ExecutionConfig`       | `int`       | `50`       | No       | Rate limit cap                                 |
 | `HTTP_POOL_SIZE`            | `ExecutionConfig`       | `int`       | `20`       | No       | HTTP connection pool size                      |
+| `TAKER_FEE_PCT`             | `FeeConfig`             | `float`     | `0.02`     | No       | Taker fee rate on profit (2%)                  |
+| `MAKER_FEE_PCT`             | `FeeConfig`             | `float`     | `0.01`     | No       | Maker fee rate on profit (1%)                  |
 | `ML_ENABLED`                | `MLConfig`              | `bool`      | `false`    | No       | Enable ML prediction pipeline                  |
 | `ML_MODEL_PATH`             | `MLConfig`              | `str`       | `models/btc_5m_v3.pkl` | No | Path to trained model artifact          |
 | `ML_FEATURE_WINDOW`         | `MLConfig`              | `int`       | `4000`     | No       | Rolling buffer size (seconds)                  |
