@@ -129,5 +129,95 @@
       "SIDEWAYS_SIZE_MULTIPLIER": "0.6",
       "TREND_SIZE_MULTIPLIER": "1.0"
     }
+  },
+
+  "__comment_ml": "=== ML Prediction Profiles (require trained model at models/btc_5m_v1.pkl) ===",
+
+  "ml_baseline": {
+    "description": "ML-enhanced — default ML settings, production edge/risk params",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_5m_v1.pkl",
+      "ML_FEATURE_WINDOW": "600",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "ML_MIN_CONFIDENCE": "0.1",
+      "ML_MAX_PREDICTED_RETURN": "0.01",
+      "ML_HORIZON_S": "300",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_SPREAD": "0.15",
+      "MAKER_MODE": "true",
+      "MAX_POSITION_PCT": "0.005",
+      "MAX_DAILY_LOSS_PCT": "0.02",
+      "MAX_OPEN_POSITIONS": "20",
+      "COOLDOWN_AFTER_LOSSES": "5",
+      "COOLDOWN_DURATION_S": "30",
+      "SIDEWAYS_SIZE_MULTIPLIER": "0.4",
+      "TREND_SIZE_MULTIPLIER": "1.0"
+    }
+  },
+  "ml_high_confidence": {
+    "description": "ML-enhanced — only trade when ML confidence is high (>0.3), tighter sizing",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_5m_v1.pkl",
+      "ML_FEATURE_WINDOW": "600",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "ML_MIN_CONFIDENCE": "0.3",
+      "ML_MAX_PREDICTED_RETURN": "0.01",
+      "ML_HORIZON_S": "300",
+      "MIN_EDGE_THRESHOLD": "0.03",
+      "MAX_EDGE_THRESHOLD": "0.25",
+      "MAX_SPREAD": "0.15",
+      "MAKER_MODE": "true",
+      "MAX_POSITION_PCT": "0.004",
+      "MAX_DAILY_LOSS_PCT": "0.015",
+      "MAX_OPEN_POSITIONS": "15",
+      "COOLDOWN_AFTER_LOSSES": "3",
+      "COOLDOWN_DURATION_S": "45",
+      "SIDEWAYS_SIZE_MULTIPLIER": "0.3",
+      "TREND_SIZE_MULTIPLIER": "1.0"
+    }
+  },
+  "ml_aggressive": {
+    "description": "ML-enhanced — lower confidence bar, larger positions, more slots for high throughput",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_5m_v1.pkl",
+      "ML_FEATURE_WINDOW": "600",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "ML_MIN_CONFIDENCE": "0.05",
+      "ML_MAX_PREDICTED_RETURN": "0.01",
+      "ML_HORIZON_S": "300",
+      "MIN_EDGE_THRESHOLD": "0.015",
+      "MAX_EDGE_THRESHOLD": "0.35",
+      "MAX_SPREAD": "0.15",
+      "MAKER_MODE": "true",
+      "MAX_POSITION_PCT": "0.008",
+      "MAX_DAILY_LOSS_PCT": "0.03",
+      "MAX_OPEN_POSITIONS": "25",
+      "MAX_TOTAL_EXPOSURE_PCT": "0.15",
+      "COOLDOWN_AFTER_LOSSES": "6",
+      "COOLDOWN_DURATION_S": "15",
+      "SIDEWAYS_SIZE_MULTIPLIER": "0.5",
+      "TREND_SIZE_MULTIPLIER": "1.2"
+    }
+  },
+  "no_ml_control": {
+    "description": "Control group — NO ML, same edge/risk params as ml_baseline for fair comparison",
+    "env_overrides": {
+      "ML_ENABLED": "false",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_SPREAD": "0.15",
+      "MAKER_MODE": "true",
+      "MAX_POSITION_PCT": "0.005",
+      "MAX_DAILY_LOSS_PCT": "0.02",
+      "MAX_OPEN_POSITIONS": "20",
+      "COOLDOWN_AFTER_LOSSES": "5",
+      "COOLDOWN_DURATION_S": "30",
+      "SIDEWAYS_SIZE_MULTIPLIER": "0.4",
+      "TREND_SIZE_MULTIPLIER": "1.0"
+    }
   }
 }

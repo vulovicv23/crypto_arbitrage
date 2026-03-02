@@ -80,6 +80,9 @@ from src.risk_manager import RiskManager
 from src.strategy import StrategyEngine
 from src.synthetic_books import SyntheticBookGenerator
 
+# ML predictor (optional — only imported when ML_ENABLED=true)
+_ml_predictor_cls = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -106,6 +109,9 @@ class Bot:
         self._discovery: MarketDiscovery | None = None
         self._synthetic_books: SyntheticBookGenerator | None = None
         self._position_resolver: PositionResolver | None = None
+        self._ml_predictor = None  # MLPredictor (when ML_ENABLED=true)
+        self._ml_price_queue: asyncio.Queue[PriceTick] | None = None
+        self._aggregator_queue: asyncio.Queue[PriceTick] | None = None
         self._sources: list = []
         self._session_start_ns: int = time.time_ns()
 
@@ -269,8 +275,46 @@ class Bot:
             ),
         ]
 
+        # ── ML Predictor (optional) ─────────────────────────────────
+        # When ML is enabled, price sources write to self._price_queue
+        # (the "raw" queue). A splitter task fans ticks out to both
+        # the aggregator's dedicated queue and the ML predictor's queue.
+        # When ML is disabled, sources write to self._price_queue and
+        # the aggregator reads directly from it (no splitter needed).
+        if self._cfg.ml.enabled:
+            try:
+                from src.ml.predictor import MLPredictor
+
+                # Aggregator gets its own queue; raw price_queue becomes input
+                self._aggregator_queue: asyncio.Queue[PriceTick] = asyncio.Queue(
+                    maxsize=5000
+                )
+                self._ml_price_queue = asyncio.Queue(maxsize=5000)
+                self._ml_predictor = MLPredictor(
+                    self._ml_price_queue,
+                    self._prediction_queue,
+                    model_path=self._cfg.ml.model_path,
+                    feature_window=self._cfg.ml.feature_window,
+                    prediction_interval=self._cfg.ml.prediction_interval,
+                    min_confidence=self._cfg.ml.min_confidence,
+                    max_predicted_return=self._cfg.ml.max_predicted_return,
+                    horizon_s=self._cfg.ml.horizon_s,
+                )
+                logger.info("ML predictor enabled: model=%s", self._cfg.ml.model_path)
+            except Exception as e:
+                logger.error("Failed to initialise ML predictor: %s", e)
+                self._ml_predictor = None
+                self._ml_price_queue = None
+                self._aggregator_queue = None  # type: ignore[assignment]
+
+        # Aggregator reads from _aggregator_queue (ML mode) or _price_queue
+        agg_input = (
+            self._aggregator_queue
+            if self._ml_predictor is not None
+            else self._price_queue
+        )
         self._aggregator = PredictionAggregator(
-            self._price_queue,
+            agg_input,
             self._prediction_queue,
             self._cfg.strategy.prediction_horizon_s,
         )
@@ -281,9 +325,22 @@ class Bot:
                 asyncio.create_task(src.start(), name=f"source-{src.name}")
             )
 
+        # Price splitter: when ML is enabled, fan out raw ticks to both
+        # the aggregator's queue and the ML predictor's queue.
+        if self._ml_predictor is not None and self._ml_price_queue is not None:
+            self._tasks.append(
+                asyncio.create_task(self._price_splitter(), name="price-splitter")
+            )
+
         self._tasks.append(
             asyncio.create_task(self._aggregator.start(), name="aggregator")
         )
+
+        # ML predictor task
+        if self._ml_predictor is not None:
+            self._tasks.append(
+                asyncio.create_task(self._ml_predictor.start(), name="ml-predictor")
+            )
         self._tasks.append(asyncio.create_task(self._strategy.run(), name="strategy"))
         self._tasks.append(
             asyncio.create_task(self._order_manager.run(), name="order-manager")
@@ -614,6 +671,42 @@ class Bot:
                 )
                 self._synthetic_books.feed_prediction(fake_pred)
 
+    # ── price splitter (ML mode) ────────────────────────────────────
+
+    async def _price_splitter(self) -> None:
+        """Fan out raw price ticks to both the aggregator and ML predictor.
+
+        When ML is enabled, price sources write to ``self._price_queue``
+        (the raw input queue).  This task consumes from it and copies
+        each tick into ``self._aggregator_queue`` (for PredictionAggregator)
+        and ``self._ml_price_queue`` (for MLPredictor).
+
+        Uses the standard back-pressure pattern: if a consumer queue is
+        full, drop the oldest item to make room.
+        """
+        assert self._ml_price_queue is not None
+        assert hasattr(self, "_aggregator_queue") and self._aggregator_queue is not None
+        consumer_queues: list[asyncio.Queue[PriceTick]] = [
+            self._aggregator_queue,
+            self._ml_price_queue,
+        ]
+        logger.info(
+            "Price splitter started — fanning out to %d consumers",
+            len(consumer_queues),
+        )
+
+        while True:
+            tick = await self._price_queue.get()
+            for q in consumer_queues:
+                try:
+                    q.put_nowait(tick)
+                except asyncio.QueueFull:
+                    try:
+                        q.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                    q.put_nowait(tick)
+
     # ── health monitor ────────────────────────────────────────────────
 
     async def _health_monitor(self) -> None:
@@ -683,13 +776,20 @@ class Bot:
                     f" synth_tokens={sb['tracked_tokens']}"
                     f" synth_ema={sb['market_ema_price']}"
                 )
+            ml_info = ""
+            if self._ml_price_queue is not None:
+                ml_info = (
+                    f" ml_price_q={self._ml_price_queue.qsize()}"
+                    f" agg_q={self._aggregator_queue.qsize() if self._aggregator_queue else '?'}"
+                )
             logger.debug(
-                "Queues | price=%d prediction=%d signal=%d " "subscribed_tokens=%d%s",
+                "Queues | price=%d prediction=%d signal=%d " "subscribed_tokens=%d%s%s",
                 self._price_queue.qsize(),
                 self._prediction_queue.qsize(),
                 self._signal_queue.qsize(),
                 len(self._subscribed_tokens),
                 ws_info,
+                ml_info,
             )
 
 

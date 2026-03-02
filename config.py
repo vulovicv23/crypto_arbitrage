@@ -228,6 +228,29 @@ class DryRunConfig:
 
 
 # ---------------------------------------------------------------------------
+# Machine Learning
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class MLConfig:
+    """Machine learning prediction model configuration."""
+
+    # Enable ML prediction source (requires a trained model file).
+    enabled: bool = os.getenv("ML_ENABLED", "false").lower() in ("true", "1", "yes")
+    # Path to the trained model artifact (.pkl).
+    model_path: str = os.getenv("ML_MODEL_PATH", "models/btc_5m_v2.pkl")
+    # Rolling buffer size for the feature engine (seconds of history).
+    feature_window: int = int(os.getenv("ML_FEATURE_WINDOW", "4000"))
+    # How often to emit ML predictions (seconds).
+    prediction_interval: float = float(os.getenv("ML_PREDICTION_INTERVAL", "0.25"))
+    # Minimum confidence to emit a prediction (filters noise).
+    min_confidence: float = float(os.getenv("ML_MIN_CONFIDENCE", "0.1"))
+    # Maximum predicted return magnitude (caps extreme predictions).
+    max_predicted_return: float = float(os.getenv("ML_MAX_PREDICTED_RETURN", "0.01"))
+    # Prediction horizon in seconds (must match training labels).
+    horizon_s: int = int(os.getenv("ML_HORIZON_S", "300"))
+
+
+# ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
@@ -254,6 +277,7 @@ class AppConfig:
     risk: RiskConfig = field(default_factory=RiskConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     dry_run: DryRunConfig = field(default_factory=DryRunConfig)
+    ml: MLConfig = field(default_factory=MLConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
 
 

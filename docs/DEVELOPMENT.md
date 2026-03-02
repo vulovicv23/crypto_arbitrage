@@ -42,6 +42,11 @@ The project uses the following key packages:
 | `orjson`      | Fast JSON serialization              |
 | `numpy`       | Linear regression, statistics        |
 | `python-dotenv`| Load `.env` file                    |
+| `lightgbm`    | ML model training and inference      |
+| `scikit-learn` | Calibration, metrics                |
+| `asyncpg`     | PostgreSQL async client              |
+| `joblib`      | Model serialization                  |
+| `optuna`      | Hyperparameter optimization          |
 
 ---
 
@@ -149,6 +154,8 @@ crypto_arbitrage/
 +-- config.py                   # All configuration (frozen dataclasses, .env loading)
 +-- .env                        # Secrets and tunable parameters (not committed)
 +-- requirements.txt            # Python dependencies
++-- docker-compose.yml          # PostgreSQL for ML data storage
++-- schema.sql                  # Database schema (klines, labels, model runs)
 +-- src/
 |   +-- models.py               # Core domain models (PriceTick, Prediction, Signal, Order, etc.)
 |   +-- market_discovery.py     # Gamma API market discovery (DiscoveredMarket, MarketDiscovery)
@@ -157,7 +164,20 @@ crypto_arbitrage/
 |   +-- risk_manager.py         # Risk management (position sizing, daily limits, cooldowns)
 |   +-- order_manager.py        # Order lifecycle (build, submit, track, close, log)
 |   +-- polymarket_client.py    # Polymarket CLOB client (REST + WebSocket + auth)
+|   +-- synthetic_books.py      # Synthetic order book generation (paper mode)
+|   +-- ws_client.py            # WebSocket client with auto-reconnect
+|   +-- ws_pool.py              # WebSocket connection pool (500 tokens/conn)
 |   +-- logger_setup.py         # Logging configuration (console + JSON file + rotation)
+|   +-- ml/                     # Machine learning prediction module
+|       +-- features.py         # Feature engineering (49 features, batch + streaming)
+|       +-- predictor.py        # LightGBM inference wrapper (async)
++-- tools/
+|   +-- test_matrix.py          # Parallel bot testing framework
+|   +-- liquidity_scanner.py    # Market liquidity discovery
+|   +-- collect_data.py         # Binance historical kline downloader
+|   +-- train_model.py          # LightGBM training with walk-forward CV
+|   +-- backtest.py             # Historical backtesting framework
++-- models/                     # Trained ML artifacts (gitignored)
 +-- logs/                       # Log output directory (auto-created)
 |   +-- bot.log                 # Main log file (JSON lines, rotated at 50MB)
 |   +-- trades.jsonl            # Trade log (one JSON object per trade)
@@ -574,6 +594,72 @@ The report ranks profiles by a composite score (0–1) based on:
 | Average edge | 0.10 | Signal quality |
 
 In dry-run mode, "expected PnL" uses `edge × fill_size` as a proxy since actual market outcomes aren't observed. This is valid for relative comparison since all profiles see the same market conditions simultaneously.
+
+---
+
+## ML Tools
+
+### Database Setup
+
+The ML pipeline requires PostgreSQL for storing historical klines and training artifacts.
+
+```bash
+# Start PostgreSQL (port 6501)
+docker compose up -d
+
+# Verify it's running
+docker compose ps
+```
+
+PostgreSQL runs on `localhost:6501` with credentials `postgres:postgres` and database `crypto_arbitrage`. The `schema.sql` file auto-runs on first start, creating tables: `btc_klines`, `ml_labels`, `ml_model_runs`.
+
+### Data Collection
+
+Download historical 1-second BTCUSDT klines from Binance:
+
+```bash
+# Download 6 months of data
+python tools/collect_data.py --start 2025-09-01 --end 2026-02-28
+
+# Resume from last stored row
+python tools/collect_data.py --resume --end 2026-02-28
+```
+
+Data is stored in the `btc_klines` table (~31.5M rows/year). The collector uses 10 parallel workers with rate limiting.
+
+### Model Training
+
+Train a LightGBM classifier with walk-forward cross-validation:
+
+```bash
+# Basic training (5m horizon)
+python tools/train_model.py --horizon 300 --output models/btc_5m_v2.pkl
+
+# With Optuna HPO
+python tools/train_model.py --horizon 300 --optuna --optuna-trials 50
+
+# Custom date range and dead zone
+python tools/train_model.py --horizon 300 --dead-zone 0.001 --start 2025-09-01 --end 2026-02-28
+```
+
+Output: `.pkl` artifact containing `model`, `calibrator`, `feature_names`, `num_features`, `horizon_s`, `metrics`. Metrics include accuracy, AUC-ROC, Brier score, log loss.
+
+### Backtesting
+
+Replay historical klines through the full ML pipeline:
+
+```bash
+# Run backtest with ML model
+python tools/backtest.py --model models/btc_5m_v2.pkl --start 2026-01-01 --end 2026-02-28
+
+# Control group (no ML)
+python tools/backtest.py --no-ml --start 2026-01-01 --end 2026-02-28
+
+# Custom capital
+python tools/backtest.py --model models/btc_5m_v2.pkl --capital 10000
+```
+
+The backtester replays klines, feeds them through the feature engine and ML inference, generates synthetic order books, runs the strategy/risk pipeline, and resolves positions at 5m boundaries. Reports total PnL, win rate, Sharpe ratio, max drawdown.
 
 ---
 

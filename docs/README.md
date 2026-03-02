@@ -13,6 +13,9 @@ Implementation documentation for the Crypto Arbitrage Bot.
 | [risk.md](risk.md) | `src/risk_manager.py` | Risk management — position sizing, daily loss limits, exposure caps, cooldown |
 | [order_manager.md](order_manager.md) | `src/order_manager.py` | Order lifecycle — signal processing, order submission, fill tracking, trade logging |
 | [config.md](config.md) | `config.py` | Configuration reference — all parameters with defaults and environment variables |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | `main.py` | System design, data flow, component diagram, async tasks |
+| [CONFIGURATION.md](CONFIGURATION.md) | `config.py` | Detailed configuration reference with all environment variables |
+| [DEVELOPMENT.md](DEVELOPMENT.md) | — | Dev workflow, setup, tools, debugging |
 
 ## Quick Reference
 
@@ -22,10 +25,13 @@ Implementation documentation for the Crypto Arbitrage Bot.
 | Risk controls | [risk.md](risk.md) + [models.md](models.md) |
 | Order execution | [order_manager.md](order_manager.md) + [polymarket_client.md](polymarket_client.md) |
 | Price feeds | [prediction_sources.md](prediction_sources.md) + [models.md](models.md) |
+| ML prediction | [ARCHITECTURE.md](ARCHITECTURE.md) (Section 3b) + [CONFIGURATION.md](CONFIGURATION.md) (MLConfig) |
 | Configuration | [config.md](config.md) |
 | API integration | [polymarket_client.md](polymarket_client.md) |
+| Training & backtesting | [DEVELOPMENT.md](DEVELOPMENT.md) (ML Tools) |
 
 ## Cross-Cutting Concerns
 
 - **Logging**: `src/logger_setup.py` — Colored console + JSON file output, configured via `LoggingConfig`
 - **Entry point**: `main.py` — `Bot` class orchestrates all components, `DryRunOrderManager` for paper trading
+- **ML pipeline**: `src/ml/` — Optional LightGBM prediction module (49 features, streaming inference)

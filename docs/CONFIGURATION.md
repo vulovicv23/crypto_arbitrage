@@ -18,9 +18,11 @@ All configuration is defined as frozen (immutable) dataclasses in `config.py`. V
 6. [StrategyConfig](#strategyconfig)
 7. [RiskConfig](#riskconfig)
 8. [ExecutionConfig](#executionconfig)
-9. [LoggingConfig](#loggingconfig)
-10. [Validation Rules](#validation-rules)
-11. [Complete Environment Variable Reference](#complete-environment-variable-reference)
+9. [DryRunConfig](#dryrunconfig)
+10. [MLConfig](#mlconfig)
+11. [LoggingConfig](#loggingconfig)
+12. [Validation Rules](#validation-rules)
+13. [Complete Environment Variable Reference](#complete-environment-variable-reference)
 
 ---
 
@@ -53,6 +55,8 @@ class AppConfig:
     strategy: StrategyConfig
     risk: RiskConfig
     execution: ExecutionConfig
+    dry_run: DryRunConfig
+    ml: MLConfig
     logging: LoggingConfig
 ```
 
@@ -182,6 +186,28 @@ Controls order submission latency and retry behavior.
 
 ---
 
+## MLConfig
+
+Controls the optional ML prediction pipeline. Disabled by default — when enabled, adds a parallel LightGBM-based predictor alongside the existing PredictionAggregator.
+
+| Field                  | Env Variable              | Type    | Default                   | Description                                           |
+|------------------------|---------------------------|---------|---------------------------|-------------------------------------------------------|
+| `enabled`              | `ML_ENABLED`              | `bool`  | `false`                   | Master switch for ML prediction pipeline              |
+| `model_path`           | `ML_MODEL_PATH`           | `str`   | `models/btc_5m_v2.pkl`   | Path to trained LightGBM .pkl artifact                |
+| `feature_window`       | `ML_FEATURE_WINDOW`       | `int`   | `4000`                    | Rolling buffer size in seconds                        |
+| `prediction_interval`  | `ML_PREDICTION_INTERVAL`  | `float` | `0.25`                    | How often to emit predictions (seconds)               |
+| `min_confidence`       | `ML_MIN_CONFIDENCE`       | `float` | `0.1`                     | Minimum confidence threshold to emit signal           |
+| `max_predicted_return` | `ML_MAX_PREDICTED_RETURN` | `float` | `0.01`                    | Cap on predicted price magnitude (1%)                 |
+| `horizon_s`            | `ML_HORIZON_S`            | `int`   | `300`                     | Prediction time horizon matching training labels (s)  |
+
+**`enabled`** is parsed as truthy: `"true"`, `"1"`, `"yes"` (case-insensitive) all evaluate to `True`.
+
+**Model artifact requirements:** The .pkl file must contain a `"model"` key with a LightGBM booster and a `"num_features"` key matching the feature engine's output (49). Optional `"calibrator"` key for isotonic calibration.
+
+**Warmup:** The feature engine requires 3661 ticks (~61 minutes of data) before producing predictions. During warmup, the ML predictor silently skips inference.
+
+---
+
 ## LoggingConfig
 
 Controls log output destinations and rotation.
@@ -251,5 +277,12 @@ All configurable environment variables in one table:
 | `MAX_LATENCY_MS`            | `ExecutionConfig`       | `int`       | `100`      | No       | Max signal age (ms)                            |
 | `MAX_ORDERS_PER_SECOND`     | `ExecutionConfig`       | `int`       | `50`       | No       | Rate limit cap                                 |
 | `HTTP_POOL_SIZE`            | `ExecutionConfig`       | `int`       | `20`       | No       | HTTP connection pool size                      |
+| `ML_ENABLED`                | `MLConfig`              | `bool`      | `false`    | No       | Enable ML prediction pipeline                  |
+| `ML_MODEL_PATH`             | `MLConfig`              | `str`       | `models/btc_5m_v2.pkl` | No | Path to trained model artifact          |
+| `ML_FEATURE_WINDOW`         | `MLConfig`              | `int`       | `4000`     | No       | Rolling buffer size (seconds)                  |
+| `ML_PREDICTION_INTERVAL`    | `MLConfig`              | `float`     | `0.25`     | No       | Prediction emit interval (seconds)             |
+| `ML_MIN_CONFIDENCE`         | `MLConfig`              | `float`     | `0.1`      | No       | Minimum confidence threshold                   |
+| `ML_MAX_PREDICTED_RETURN`   | `MLConfig`              | `float`     | `0.01`     | No       | Max predicted price magnitude (1%)             |
+| `ML_HORIZON_S`              | `MLConfig`              | `int`       | `300`      | No       | Prediction horizon (seconds)                   |
 | `LOG_LEVEL`                 | `LoggingConfig`         | `str`       | `"INFO"`   | No       | Log level                                      |
 | `LOG_DIR`                   | `LoggingConfig`         | `str`       | `{project}/logs` | No  | Directory for log files (enables per-instance isolation) |

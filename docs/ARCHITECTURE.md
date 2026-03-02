@@ -17,9 +17,12 @@ The bot is an async Python 3.13 application built on `asyncio` with `aiohttp` fo
 │                                                                   │
 │  ┌─────────────┐   price_queue (5000)                            │
 │  │ BinanceWS   │──────┐                                          │
-│  │ CryptoComp  │──────┼──── PredictionAggregator ────┐           │
-│  │ CoinGecko   │──────┘     prediction_sources.py    │           │
-│  └─────────────┘                                      │           │
+│  │ CryptoComp  │──────┼──┬── PredictionAggregator ───┐           │
+│  │ CoinGecko   │──────┘  │   prediction_sources.py   │           │
+│  └─────────────┘         │                            │           │
+│                          │  [ML enabled: splitter]    │           │
+│                          └── MLPredictor ─────────────┤           │
+│                              src/ml/predictor.py      │           │
 │                             prediction_queue (500)    │           │
 │  ┌───────────────┐                                    v           │
 │  │ Polymarket WS │──book──> StrategyEngine ──> signal_queue (200)│
@@ -89,6 +92,29 @@ Runs two concurrent loops:
   3. Confidence = R-squared of the regression fit
   4. Cross-source blending: confidence-weighted average
   5. Agreement factor: penalizes divergence between sources
+
+### 3b. ML Predictor (`src/ml/predictor.py`) — Optional
+
+When `ML_ENABLED=true`, the bot adds a parallel prediction path:
+
+1. A **price splitter** task fans `PriceTick` objects from `price_queue` to both:
+   - `aggregator_queue` → PredictionAggregator (existing path)
+   - `ml_price_queue` → MLPredictor (new path)
+
+2. **MLPredictor** runs two concurrent loops:
+   - **Ingest loop**: Consumes `PriceTick` objects, feeds rolling buffer to `FeatureEngine`
+   - **Predict loop**: Every 0.25s, computes 49 features, runs LightGBM inference (~<1ms), emits `Prediction` objects
+
+3. **Feature catalogue** (49 frozen features):
+   - Returns (6), volatility (4), momentum (3), acceleration (2), volume (4)
+   - VWAP deviation (2), Bollinger z-score (2), EMA/MACD (2), range/intensity (2)
+   - Multi-timeframe 1m/5m bars (10), microstructure (8+3), orderbook pass-through (5), time (2)
+
+4. **Warmup**: Requires 3661 ticks (~61 minutes) before first prediction. The `FeatureEngine` returns `None` until sufficient data is accumulated.
+
+5. **Confidence**: `|p_up - 0.5| × 2.0`, filtered by `ML_MIN_CONFIDENCE` threshold.
+
+When ML is disabled (default), the price splitter is not created and the pipeline works as before.
 
 ### 4. Strategy Engine (`src/strategy.py`)
 
@@ -160,6 +186,8 @@ Approved signals become orders:
 | `price_queue` | 5000 | Drop oldest tick |
 | `prediction_queue` | 500 | Drop oldest prediction |
 | `signal_queue` | 200 | Drop oldest signal |
+| `aggregator_queue` | 5000 | Drop oldest tick (ML mode only) |
+| `ml_price_queue` | 5000 | Drop oldest tick (ML mode only) |
 
 ## Async Task Summary
 
@@ -174,6 +202,8 @@ Approved signals become orders:
 | `health-monitor` | `Bot._health_monitor()` | Stats dump every 30s |
 | `market-discovery` | `MarketDiscovery.start()` | Discover new markets every 20s |
 | `poly-ws-*` | `PolymarketClient.subscribe_books()` | WS book subscriptions (dynamic) |
+| `price-splitter` | `Bot._price_splitter()` | Fan ticks to aggregator + ML (ML mode) |
+| `ml-predictor` | `MLPredictor.start()` | Ingest + predict loops (ML mode) |
 
 ## Shutdown Sequence
 
@@ -190,7 +220,7 @@ Approved signals become orders:
 
 ```
 config.py          ← .env
-main.py            ← config, all src/* modules
+main.py            ← config, all src/* modules, src/ml/predictor
 src/models.py      ← (standalone, no internal deps)
 src/market_discovery.py  ← aiohttp (Gamma API)
 src/prediction_sources.py ← models, aiohttp, numpy
@@ -198,5 +228,10 @@ src/strategy.py    ← config, models, numpy, math (CDF)
 src/risk_manager.py ← config, models
 src/order_manager.py ← config, models, polymarket_client, risk_manager
 src/polymarket_client.py ← config, models, aiohttp, orjson
+src/synthetic_books.py ← config, models
+src/ws_client.py   ← aiohttp, orjson
+src/ws_pool.py     ← ws_client
+src/ml/features.py ← numpy (standalone feature engine)
+src/ml/predictor.py ← config, models, ml/features, joblib, lightgbm
 src/logger_setup.py ← config
 ```

@@ -178,6 +178,8 @@ def load_custom_profiles(path: str) -> dict[str, Profile]:
         data = json.load(f)
     profiles: dict[str, Profile] = {}
     for name, spec in data.items():
+        if not isinstance(spec, dict):
+            continue  # skip comment entries like "__comment_ml"
         profiles[name] = Profile(
             name=name,
             description=spec.get("description", ""),

@@ -12,10 +12,13 @@ Aggregates all sub-configurations:
 @dataclass(frozen=True)
 class AppConfig:
     polymarket: PolymarketConfig
+    discovery: DiscoveryConfig
     predictions: PredictionSourcesConfig
     strategy: StrategyConfig
     risk: RiskConfig
     execution: ExecutionConfig
+    dry_run: DryRunConfig
+    ml: MLConfig
     logging: LoggingConfig
 ```
 
@@ -101,3 +104,17 @@ Logging setup.
 | `trade_log_file` | — | `trades.jsonl` | Trade log (JSON lines) |
 | `max_bytes` | — | 50,000,000 (50MB) | Max log file size |
 | `backup_count` | — | 10 | Number of rotated backups |
+
+## MLConfig
+
+ML prediction pipeline (optional, disabled by default).
+
+| Parameter | Env Var | Default | Description |
+|-----------|---------|---------|-------------|
+| `enabled` | `ML_ENABLED` | false | Enable ML prediction pipeline |
+| `model_path` | `ML_MODEL_PATH` | `models/btc_5m_v2.pkl` | Path to trained .pkl artifact |
+| `feature_window` | `ML_FEATURE_WINDOW` | 4000 | Rolling buffer size (seconds) |
+| `prediction_interval` | `ML_PREDICTION_INTERVAL` | 0.25 | Prediction emit interval (seconds) |
+| `min_confidence` | `ML_MIN_CONFIDENCE` | 0.1 | Minimum confidence to emit signal |
+| `max_predicted_return` | `ML_MAX_PREDICTED_RETURN` | 0.01 (1%) | Cap on predicted price magnitude |
+| `horizon_s` | `ML_HORIZON_S` | 300 (5 min) | Prediction horizon matching training labels |
