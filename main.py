@@ -445,9 +445,9 @@ class Bot:
         if self._poly_client:
             await self._poly_client.close()
 
-        # Force-resolve any remaining open positions for P&L accounting
+        # Snapshot remaining open positions (no fake PnL — informational only)
         if self._position_resolver:
-            self._position_resolver.force_resolve_all()
+            self._position_resolver.snapshot_open_positions()
 
         # Print session summary
         self._print_session_summary()
@@ -763,7 +763,7 @@ class Bot:
                         f" next_boundary={d['next_boundary_s']}s"
                     )
 
-                logger.info(
+                logger.warning(
                     "HEALTH | balance=$%.2f pnl=%+.4f open=%d "
                     "filled=%d rejected=%d risk_blocked=%d "
                     "win_rate=%.1f%% volume=%.2f regime=%s%s%s",
@@ -873,6 +873,34 @@ class PositionResolver:
                 if ctx.condition_id not in self._reference_prices:
                     self._reference_prices[ctx.condition_id] = btc_price
 
+    def _prune_stale_contexts(self) -> None:
+        """Remove market contexts and reference prices for conditions with
+        no open positions. This prevents unbounded growth over long sessions."""
+        open_positions = self._risk.state.open_positions
+        # Collect condition IDs that still have open positions
+        active_cids: set[str] = set()
+        for token_id in open_positions:
+            ctx = self._market_contexts.get(token_id)
+            if ctx:
+                active_cids.add(ctx.condition_id)
+
+        # Prune contexts whose condition has no open positions
+        stale_tokens = [
+            tid
+            for tid, ctx in self._market_contexts.items()
+            if ctx.condition_id not in active_cids
+            and time.time_ns() > ctx.end_date_ns
+        ]
+        for tid in stale_tokens:
+            del self._market_contexts[tid]
+
+        # Prune reference prices for resolved conditions
+        stale_cids = [
+            cid for cid in self._reference_prices if cid not in active_cids
+        ]
+        for cid in stale_cids:
+            del self._reference_prices[cid]
+
     async def run(self) -> None:
         self._running = True
         logger.info("Position resolver started (poll=%.1fs)", self._poll_interval)
@@ -890,6 +918,8 @@ class PositionResolver:
         """Resolve all positions whose markets have expired."""
         open_positions = self._risk.state.open_positions
         if not open_positions:
+            # No open positions — good time to prune stale contexts
+            self._prune_stale_contexts()
             return
 
         now_ns = time.time_ns()
@@ -907,6 +937,9 @@ class PositionResolver:
 
         for token_id, position, ctx in to_close:
             self._resolve_position(token_id, position, ctx, btc_price)
+
+        # Prune stale contexts after resolving expired positions
+        self._prune_stale_contexts()
 
     def _compute_fee(self, pnl_gross: float) -> float:
         """Compute Polymarket fee: charged only on the profit portion.
@@ -1039,7 +1072,7 @@ class PositionResolver:
         result = "WIN" if pnl_net > 0 else "LOSS"
         outcome_str = outcome.value if outcome else "?"
 
-        logger.info(
+        logger.warning(
             "RESOLVED %s: %s %s %s settle=%.2f entry=%.4f "
             "pnl_gross=%+.4f fee=%.4f pnl_net=%+.4f "
             "size=%.2f btc_ref=%.2f now=%.2f (%+.3f%% %s)%s",
@@ -1059,6 +1092,71 @@ class PositionResolver:
             "UP" if btc_went_up else "DOWN",
             " [FORCE]" if force_resolved else "",
         )
+
+    def snapshot_open_positions(self) -> None:
+        """Write snapshot records for all open positions at shutdown.
+
+        Unlike force_resolve_all(), this does NOT settle positions or compute PnL.
+        It only records the current state so the report can show how many positions
+        were still open. These are excluded from all PnL/WR metrics.
+        """
+        open_positions = dict(self._risk.state.open_positions)
+        if not open_positions:
+            return
+
+        btc_price = self._get_btc_price()
+        logger.warning(
+            "Snapshotting %d open positions at shutdown (BTC=$%.2f)",
+            len(open_positions),
+            btc_price or 0.0,
+        )
+
+        for token_id, position in open_positions.items():
+            ctx = self._market_contexts.get(token_id)
+            ref_price = self._reference_prices.get(
+                ctx.condition_id if ctx else "", 0.0
+            )
+            # Compute unrealized PnL for informational purposes only
+            unrealized = 0.0
+            if btc_price and ref_price and ref_price > 0:
+                btc_went_up = btc_price > ref_price
+                outcome = ctx.token_outcome(token_id) if ctx else None
+                if outcome == TokenOutcome.YES:
+                    settlement_est = 1.0 if btc_went_up else 0.0
+                elif outcome == TokenOutcome.NO:
+                    settlement_est = 0.0 if btc_went_up else 1.0
+                else:
+                    settlement_est = position.entry_price
+                if position.side == Side.BUY:
+                    unrealized = (settlement_est - position.entry_price) * position.size
+                else:
+                    unrealized = (position.entry_price - settlement_est) * position.size
+
+            seconds_held = (time.time_ns() - position.opened_ns) / 1_000_000_000
+            record = {
+                "type": "snapshot",
+                "ts": time.time(),
+                "order_id": position.order_id,
+                "condition_id": position.condition_id,
+                "token_id": position.token_id,
+                "side": position.side.value,
+                "entry_price": position.entry_price,
+                "size": position.size,
+                "btc_at_shutdown": btc_price,
+                "btc_ref": ref_price,
+                "unrealized_pnl": round(unrealized, 6),
+                "seconds_held": round(seconds_held, 1),
+            }
+            if self._trade_log is not None:
+                try:
+                    self._trade_log.parent.mkdir(parents=True, exist_ok=True)
+                    with open(self._trade_log, "a") as f:
+                        f.write(json.dumps(record) + "\n")
+                except Exception:
+                    logger.exception("Snapshot log write failed")
+
+            # Clean up risk manager (close position without PnL)
+            self._risk.record_close(token_id, 0.0, position.size)
 
     def force_resolve_all(self) -> None:
         """Resolve all open positions at current BTC price (used at shutdown).

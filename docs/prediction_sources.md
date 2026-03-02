@@ -21,10 +21,14 @@ PredictionAggregator consumes ticks → emits Prediction objects
 ## Base Class: PriceSource (ABC)
 
 All sources extend `PriceSource`. Provides:
-- `start()` — Launch the source, handle cancellation and crashes
+- `start()` — Launch the source with automatic retry on crash (exponential backoff: 1s → 2s → 4s → ... → 60s max)
 - `stop()` — Set `_running = False`
 - `_emit(tick)` — Push to queue with back-pressure (drops oldest on full)
 - `_run()` — Abstract method implemented by each source
+
+### Crash Recovery
+
+If `_run()` raises a non-`CancelledError` exception, the source logs the error and restarts automatically after an exponential backoff delay. This prevents permanent loss of a price feed due to transient errors (network timeouts, API blips, etc.). Clean cancellation (`CancelledError`) exits immediately without retry.
 
 ## Sources
 

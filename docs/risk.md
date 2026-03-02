@@ -64,7 +64,7 @@ size = base * regime_multiplier * strength_multiplier * confidence_multiplier * 
 ### State Management
 
 **RiskState** tracks:
-- `capital` — Starting capital
+- `capital` — Current capital (initial + cumulative realized PnL; updated on every `record_close()`)
 - `open_positions` — Dict of `token_id → Position`
 - `daily_pnl` — `DailyPnL` tracker
 - `consecutive_losses` — Loss streak counter
@@ -89,7 +89,7 @@ At the start of each new trading day:
 |--------|-------------|
 | `check_signal(signal)` | Evaluate signal against all risk checks |
 | `record_fill(position)` | Register a new open position |
-| `record_close(token_id, pnl, volume)` | Record a closed trade, update P&L |
+| `record_close(token_id, pnl, volume)` | Record a closed trade, update P&L and capital |
 
 ### Key Properties
 

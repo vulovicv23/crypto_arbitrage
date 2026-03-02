@@ -638,12 +638,23 @@ class FeatureEngine:
 
     def __init__(self, buffer_size: int = 4000) -> None:
         self._buffer_size = buffer_size
+        # 1-second OHLCV bar buffers (matches training data format)
         self._timestamps: deque[int] = deque(maxlen=buffer_size)
-        self._prices: deque[float] = deque(maxlen=buffer_size)
+        self._opens: deque[float] = deque(maxlen=buffer_size)
+        self._prices: deque[float] = deque(maxlen=buffer_size)  # closes
         self._highs: deque[float] = deque(maxlen=buffer_size)
         self._lows: deque[float] = deque(maxlen=buffer_size)
         self._volumes: deque[float] = deque(maxlen=buffer_size)
         self._trades: deque[float] = deque(maxlen=buffer_size)
+
+        # Current 1-second bar being aggregated
+        self._bar_ts_s: int | None = None  # second being built
+        self._bar_open: float = 0.0
+        self._bar_high: float = 0.0
+        self._bar_low: float = 0.0
+        self._bar_close: float = 0.0
+        self._bar_volume: float = 0.0
+        self._bar_trades: float = 0.0
 
         # Book history for orderbook-derived features (updated via update_book)
         self._book_mids: deque[float] = deque(maxlen=120)
@@ -653,13 +664,15 @@ class FeatureEngine:
 
     @property
     def latest_price(self) -> float:
-        """Most recent price in the buffer, or 0.0 if empty."""
+        """Most recent price seen (including current in-progress bar)."""
+        if self._bar_ts_s is not None:
+            return self._bar_close
         return self._prices[-1] if self._prices else 0.0
 
     @property
     def tick_count(self) -> int:
-        """Number of ticks currently in the buffer."""
-        return len(self._prices)
+        """Number of 1-second bars available (finalized + pending)."""
+        return len(self._prices) + (1 if self._bar_ts_s is not None else 0)
 
     def update(
         self,
@@ -670,13 +683,57 @@ class FeatureEngine:
         high: float | None = None,
         low: float | None = None,
     ) -> None:
-        """Append one tick to the rolling buffer."""
-        self._timestamps.append(timestamp_ns)
-        self._prices.append(price)
-        self._highs.append(high if high is not None else price)
-        self._lows.append(low if low is not None else price)
-        self._volumes.append(volume)
-        self._trades.append(trades_count)
+        """Aggregate ticks into 1-second OHLCV bars (matching training data).
+
+        Each bar captures the open/high/low/close within a 1-second window,
+        producing proper candlestick microstructure features that match the
+        Binance 1s klines used during training.
+        """
+        ts_s = timestamp_ns // 1_000_000_000
+        tick_high = high if high is not None else price
+        tick_low = low if low is not None else price
+
+        if self._bar_ts_s is None:
+            # First tick ever — start a new bar
+            self._bar_ts_s = ts_s
+            self._bar_open = price
+            self._bar_high = tick_high
+            self._bar_low = tick_low
+            self._bar_close = price
+            self._bar_volume = volume
+            self._bar_trades = trades_count
+            return
+
+        if ts_s == self._bar_ts_s:
+            # Same second — update current bar
+            self._bar_high = max(self._bar_high, tick_high)
+            self._bar_low = min(self._bar_low, tick_low)
+            self._bar_close = price
+            self._bar_volume += volume
+            self._bar_trades += trades_count
+        else:
+            # New second — finalize current bar, then start a new one
+            self._finalize_bar()
+            self._bar_ts_s = ts_s
+            self._bar_open = price
+            self._bar_high = tick_high
+            self._bar_low = tick_low
+            self._bar_close = price
+            self._bar_volume = volume
+            self._bar_trades = trades_count
+
+    def _finalize_bar(self) -> None:
+        """Append the current 1-second bar to the rolling buffers."""
+        if self._bar_ts_s is None:
+            return
+        # Store bar timestamp in nanoseconds (start of second)
+        self._timestamps.append(self._bar_ts_s * 1_000_000_000)
+        self._opens.append(self._bar_open)
+        self._prices.append(self._bar_close)
+        self._highs.append(self._bar_high)
+        self._lows.append(self._bar_low)
+        self._volumes.append(self._bar_volume)
+        self._trades.append(self._bar_trades)
 
     def update_book(self, mid: float, spread: float) -> None:
         """Update orderbook history from a Polymarket book snapshot.
@@ -696,13 +753,17 @@ class FeatureEngine:
     ) -> np.ndarray | None:
         """Return a (NUM_FEATURES,) feature vector, or None if insufficient data.
 
-        Requires at least _MIN_TICKS ticks in the buffer.
+        Requires at least _MIN_TICKS 1-second bars (finalized + pending).
+        The in-progress bar is included in the computation without mutating state.
         Book-derived features (53-55) are computed from ``update_book()`` history.
         """
-        if len(self._prices) < _MIN_TICKS:
+        has_pending = self._bar_ts_s is not None
+        total_bars = len(self._prices) + (1 if has_pending else 0)
+        if total_bars < _MIN_TICKS:
             return None
 
         # Convert deques to numpy arrays
+        opens = np.array(self._opens, dtype=np.float64)
         prices = np.array(self._prices, dtype=np.float64)
         h = np.array(self._highs, dtype=np.float64)
         l = np.array(self._lows, dtype=np.float64)
@@ -710,9 +771,21 @@ class FeatureEngine:
         timestamps_ms = np.array(self._timestamps, dtype=np.int64) // 1_000_000
         trades = np.array(self._trades, dtype=np.float64)
 
+        # Append in-progress bar without finalizing it
+        if has_pending:
+            opens = np.append(opens, self._bar_open)
+            prices = np.append(prices, self._bar_close)
+            h = np.append(h, self._bar_high)
+            l = np.append(l, self._bar_low)
+            volumes = np.append(volumes, self._bar_volume)
+            timestamps_ms = np.append(
+                timestamps_ms, self._bar_ts_s * 1_000
+            )
+            trades = np.append(trades, self._bar_trades)
+
         mat = compute_batch(
             timestamps_ms=timestamps_ms,
-            opens=prices,
+            opens=opens,
             highs=h,
             lows=l,
             closes=prices,
@@ -724,7 +797,7 @@ class FeatureEngine:
             total_seconds=total_seconds,
         )
 
-        # Return the last row (current tick's features)
+        # Return the last row (current bar's features)
         last_row = mat[-1]
 
         # Override orderbook-derived features (53-55) with live book data

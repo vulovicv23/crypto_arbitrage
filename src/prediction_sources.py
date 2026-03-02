@@ -55,14 +55,22 @@ class PriceSource(ABC):
     async def start(self) -> None:
         self._running = True
         logger.info("Starting price source: %s", self.name)
-        try:
-            await self._run()
-        except asyncio.CancelledError:
-            logger.info("Source %s cancelled", self.name)
-        except Exception:
-            logger.exception("Source %s crashed", self.name)
-        finally:
-            self._running = False
+        backoff = 1.0
+        max_backoff = 60.0
+        while self._running:
+            try:
+                await self._run()
+                break  # Clean exit (shouldn't happen, but handle gracefully)
+            except asyncio.CancelledError:
+                logger.info("Source %s cancelled", self.name)
+                break
+            except Exception:
+                logger.exception(
+                    "Source %s crashed — restarting in %.0fs", self.name, backoff
+                )
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, max_backoff)
+        self._running = False
 
     def stop(self) -> None:
         self._running = False

@@ -128,12 +128,17 @@ class StrategyEngine:
 
         Called by main.py when market discovery updates active markets.
         Each token knows its outcome (YES/NO), expiry time, and timeframe.
+        Stale books for tokens no longer in the active set are pruned.
         """
         self._token_to_market = contexts
         # Also maintain the simple condition mapping for backward compat
         self._token_to_condition = {
             tid: ctx.condition_id for tid, ctx in contexts.items()
         }
+        # Prune books for tokens that are no longer in any active market
+        stale_tokens = [tid for tid in self._books if tid not in contexts]
+        for tid in stale_tokens:
+            del self._books[tid]
 
     def set_token_mapping(self, mapping: dict[str, str]) -> None:
         """Set token_id → condition_id mapping (static mode fallback).

@@ -126,9 +126,12 @@ class RiskManager:
         )
 
     def record_close(self, token_id: str, pnl: float, volume: float) -> None:
-        """Record a closed trade."""
+        """Record a closed trade and update capital with realized PnL."""
         self._state.open_positions.pop(token_id, None)
         self._state.daily_pnl.record_trade(pnl, volume)
+
+        # Track capital so position sizing reflects realized gains/losses
+        self._state.capital += pnl
 
         if pnl < 0:
             self._state.consecutive_losses += 1

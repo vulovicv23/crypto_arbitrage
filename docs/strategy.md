@@ -378,7 +378,8 @@ The strategy needs two things for each tracked token:
 1. `MarketDiscovery` periodically queries the Gamma API for active BTC Up/Down markets.
 2. For each discovered market, it provides `yes_token_id` (Up) and `no_token_id` (Down), `end_date`, `timeframe`, and `asset`.
 3. `main.py` builds `MarketContext` objects from each `DiscoveredMarket` and calls `strategy.set_market_contexts(contexts)`.
-4. In `_evaluate()`, the strategy looks up the `MarketContext` for each token, determines the YES/NO outcome, and uses the expiry time for the probability model.
+4. `set_market_contexts()` replaces the active token mapping and **prunes stale order books** for tokens no longer in the active set, preventing unbounded memory growth.
+5. In `_evaluate()`, the strategy looks up the `MarketContext` for each token, determines the YES/NO outcome, and uses the expiry time for the probability model.
 
 **`MarketContext` dataclass:**
 

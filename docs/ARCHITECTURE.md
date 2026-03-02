@@ -102,8 +102,8 @@ When `ML_ENABLED=true`, the bot adds a parallel prediction path:
    - `ml_price_queue` → MLPredictor (new path)
 
 2. **MLPredictor** runs two concurrent loops:
-   - **Ingest loop**: Consumes `PriceTick` objects, feeds rolling buffer to `FeatureEngine`
-   - **Predict loop**: Every 0.25s, computes 58 features, runs LightGBM inference (~<1ms), emits `Prediction` objects
+   - **Ingest loop**: Consumes `PriceTick` objects, feeds `FeatureEngine` which aggregates ticks into 1-second OHLCV bars (matching Binance 1s kline training data)
+   - **Predict loop**: Every 0.25s, computes 58 features from the bar buffer, runs LightGBM inference (~<1ms), emits `Prediction` objects
 
 3. **Feature catalogue** (58 frozen features):
    - Returns (6), volatility (4), momentum (3), acceleration (2), volume (4)
@@ -111,7 +111,7 @@ When `ML_ENABLED=true`, the bot adds a parallel prediction path:
    - Multi-timeframe 1m/5m bars (10), v2 features (8), candlestick microstructure (6)
    - Orderbook pass-through (5), time features (2)
 
-4. **Warmup**: Requires 3661 ticks (~61 minutes) before first prediction. The `FeatureEngine` returns `None` until sufficient data is accumulated.
+4. **Warmup**: Requires 3661 1-second bars (~61 minutes) before first prediction. The `FeatureEngine` returns `None` until sufficient data is accumulated.
 
 5. **Confidence**: `|p_up - 0.5| × 2.0`, filtered by `ML_MIN_CONFIDENCE` threshold.
 
