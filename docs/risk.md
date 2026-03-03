@@ -43,8 +43,8 @@ size = base * regime_multiplier * strength_multiplier * confidence_multiplier * 
 | Factor | Formula |
 |--------|---------|
 | `base` | `capital * max_position_pct` (default: 0.5% = $50 on $10k) |
-| `regime_multiplier` | SIDEWAYS: 0.4x, TRENDING: 1.0x |
-| `strength_multiplier` | WEAK: 0.5x, MODERATE: 0.75x, STRONG: 1.0x |
+| `regime_multiplier` | SIDEWAYS: 0.4x, TRENDING_UP: 0.5x, TRENDING_DOWN: 1.0x |
+| `strength_multiplier` | WEAK: 0.5x, MODERATE: 0.4x (configurable), STRONG: 1.0x |
 | `confidence_multiplier` | prediction confidence (0.0–1.0) |
 | `expiry_multiplier` | From `Signal.size_multiplier` (default: 1.0; see expiry buckets in `docs/strategy.md`) |
 
@@ -59,7 +59,9 @@ size = base * regime_multiplier * strength_multiplier * confidence_multiplier * 
 | `cooldown_after_losses` | `COOLDOWN_AFTER_LOSSES` | 5 | Consecutive losses before cooldown |
 | `cooldown_duration_s` | `COOLDOWN_DURATION_S` | 30.0 | Cooldown duration (seconds) |
 | `sideways_size_multiplier` | `SIDEWAYS_SIZE_MULTIPLIER` | 0.4 | Size reduction in sideways markets |
-| `trend_size_multiplier` | `TREND_SIZE_MULTIPLIER` | 1.0 | Size multiplier in trending markets |
+| `trend_size_multiplier` | `TREND_SIZE_MULTIPLIER` | 1.0 | Size multiplier in trending-down markets |
+| `trending_up_size_multiplier` | `TRENDING_UP_SIZE_MULTIPLIER` | 0.5 | Size multiplier in trending-up markets |
+| `moderate_strength_multiplier` | `MODERATE_STRENGTH_MULTIPLIER` | 0.4 | Size multiplier for MODERATE signals |
 
 ### State Management
 

@@ -1,0 +1,70 @@
+{
+  "v4_ml_highconf_buckets": {
+    "description": "ML with high confidence floor (0.60), expiry buckets, reduced TRENDING_UP and MODERATE sizing",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_5m_v3.pkl",
+      "ML_FEATURE_WINDOW": "4000",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "ML_MIN_CONFIDENCE": "0.60",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.005",
+      "EXPIRY_BUCKETS_ENABLED": "true",
+      "NEAR_EXPIRY_S": "120",
+      "FAR_EXPIRY_S": "600",
+      "NEAR_MIN_EDGE": "0.03",
+      "NEAR_MAX_EDGE": "0.40",
+      "NEAR_SIZE_MULT": "1.2",
+      "FAR_MIN_EDGE": "0.03",
+      "FAR_MAX_EDGE": "0.25",
+      "FAR_SIZE_MULT": "0.8",
+      "TRENDING_UP_SIZE_MULTIPLIER": "0.5",
+      "MODERATE_STRENGTH_MULTIPLIER": "0.4"
+    }
+  },
+  "v4_ml_medconf_buckets": {
+    "description": "ML with moderate confidence floor (0.40), expiry buckets, reduced TRENDING_UP and MODERATE sizing",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_5m_v3.pkl",
+      "ML_FEATURE_WINDOW": "4000",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "ML_MIN_CONFIDENCE": "0.40",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.005",
+      "EXPIRY_BUCKETS_ENABLED": "true",
+      "NEAR_EXPIRY_S": "120",
+      "FAR_EXPIRY_S": "600",
+      "NEAR_MIN_EDGE": "0.03",
+      "NEAR_MAX_EDGE": "0.40",
+      "NEAR_SIZE_MULT": "1.2",
+      "FAR_MIN_EDGE": "0.03",
+      "FAR_MAX_EDGE": "0.25",
+      "FAR_SIZE_MULT": "0.8",
+      "TRENDING_UP_SIZE_MULTIPLIER": "0.5",
+      "MODERATE_STRENGTH_MULTIPLIER": "0.4"
+    }
+  },
+  "v4_no_ml_improved": {
+    "description": "No ML with tightened near-expiry edge, reduced TRENDING_UP and MODERATE sizing",
+    "env_overrides": {
+      "ML_ENABLED": "false",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.005",
+      "EXPIRY_BUCKETS_ENABLED": "true",
+      "NEAR_EXPIRY_S": "120",
+      "FAR_EXPIRY_S": "600",
+      "NEAR_MIN_EDGE": "0.03",
+      "NEAR_MAX_EDGE": "0.40",
+      "NEAR_SIZE_MULT": "1.2",
+      "FAR_MIN_EDGE": "0.03",
+      "FAR_MAX_EDGE": "0.20",
+      "FAR_SIZE_MULT": "0.7",
+      "TRENDING_UP_SIZE_MULTIPLIER": "0.5",
+      "MODERATE_STRENGTH_MULTIPLIER": "0.4"
+    }
+  }
+}

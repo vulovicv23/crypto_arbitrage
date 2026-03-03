@@ -159,16 +159,18 @@ class RiskManager:
         """
         base = self._state.capital * self._cfg.max_position_pct
 
-        # Regime multiplier
+        # Regime multiplier — differentiate TRENDING_UP from TRENDING_DOWN
         if signal.regime == MarketRegime.SIDEWAYS:
             regime_mult = self._cfg.sideways_size_multiplier
+        elif signal.regime == MarketRegime.TRENDING_UP:
+            regime_mult = self._cfg.trending_up_size_multiplier
         else:
             regime_mult = self._cfg.trend_size_multiplier
 
         # Strength multiplier
         strength_map = {
             SignalStrength.WEAK: 0.5,
-            SignalStrength.MODERATE: 0.75,
+            SignalStrength.MODERATE: self._cfg.moderate_strength_multiplier,
             SignalStrength.STRONG: 1.0,
         }
         strength_mult = strength_map.get(signal.strength, 0.5)

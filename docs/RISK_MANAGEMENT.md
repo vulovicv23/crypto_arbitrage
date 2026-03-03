@@ -231,20 +231,22 @@ When triggered:
 
 Applied in `_compute_size()` based on the `signal.regime` field:
 
-| Regime             | Multiplier | Config Key                  | Default |
-|--------------------|------------|-----------------------------|---------|
-| `SIDEWAYS`         | Reduced    | `SIDEWAYS_SIZE_MULTIPLIER`  | `0.4`   |
-| `TRENDING_UP`      | Full       | `TREND_SIZE_MULTIPLIER`     | `1.0`   |
-| `TRENDING_DOWN`    | Full       | `TREND_SIZE_MULTIPLIER`     | `1.0`   |
+| Regime             | Multiplier | Config Key                      | Default |
+|--------------------|------------|---------------------------------|---------|
+| `SIDEWAYS`         | Reduced    | `SIDEWAYS_SIZE_MULTIPLIER`      | `0.4`   |
+| `TRENDING_UP`      | Reduced    | `TRENDING_UP_SIZE_MULTIPLIER`   | `0.5`   |
+| `TRENDING_DOWN`    | Full       | `TREND_SIZE_MULTIPLIER`         | `1.0`   |
 
 ```python
 if signal.regime == MarketRegime.SIDEWAYS:
-    regime_mult = self._cfg.sideways_size_multiplier  # 0.4
+    regime_mult = self._cfg.sideways_size_multiplier        # 0.4
+elif signal.regime == MarketRegime.TRENDING_UP:
+    regime_mult = self._cfg.trending_up_size_multiplier     # 0.5
 else:
-    regime_mult = self._cfg.trend_size_multiplier     # 1.0
+    regime_mult = self._cfg.trend_size_multiplier           # 1.0
 ```
 
-Both `TRENDING_UP` and `TRENDING_DOWN` use the same trend multiplier. To differentiate, modify the `_compute_size()` method.
+`TRENDING_UP` uses a separate, reduced multiplier because data analysis showed ML predictions underperform significantly in uptrend regimes (42.6% WR vs 53.1% in downtrends).
 
 ---
 
@@ -255,7 +257,7 @@ Applied in `_compute_size()` based on the `signal.strength` field:
 | Strength   | Multiplier | Edge Range (with default threshold)  |
 |------------|------------|--------------------------------------|
 | `WEAK`     | `0.5`      | `0.02 <= edge < 0.03`               |
-| `MODERATE` | `0.75`     | `0.03 <= edge < 0.05`               |
+| `MODERATE` | `0.4` (configurable) | `0.03 <= edge < 0.05`     |
 | `STRONG`   | `1.0`      | `0.05 <= edge < 0.30`               |
 
 Edge values are in **probability space** (not return space). A `WEAK` signal means a 2–3% probability advantage over the market. A `STRONG` signal means a 5%+ advantage, which is common near market expiry as the CDF sharpens.
@@ -263,13 +265,13 @@ Edge values are in **probability space** (not return space). A `WEAK` signal mea
 ```python
 strength_map = {
     SignalStrength.WEAK: 0.5,
-    SignalStrength.MODERATE: 0.75,
+    SignalStrength.MODERATE: self._cfg.moderate_strength_multiplier,  # 0.4
     SignalStrength.STRONG: 1.0,
 }
 strength_mult = strength_map.get(signal.strength, 0.5)
 ```
 
-These multipliers are **hardcoded** in `_compute_size()`. To make them configurable, add fields to `RiskConfig` and reference them here.
+The `MODERATE` multiplier is configurable via `MODERATE_STRENGTH_MULTIPLIER` (default `0.4`). Data analysis showed MODERATE signals are the worst-performing strength class (43–49% WR across profiles), so the default was reduced from the original `0.75`.
 
 ---
 
@@ -313,5 +315,7 @@ All risk-related environment variables:
 | `COOLDOWN_AFTER_LOSSES`     | `int`   | `5`      | Consecutive losses before cooldown triggers                |
 | `COOLDOWN_DURATION_S`       | `float` | `30.0`   | Cooldown pause duration in seconds                         |
 | `SIDEWAYS_SIZE_MULTIPLIER`  | `float` | `0.4`    | Position size multiplier in sideways regime                |
-| `TREND_SIZE_MULTIPLIER`     | `float` | `1.0`    | Position size multiplier in trending regime                |
+| `TREND_SIZE_MULTIPLIER`     | `float` | `1.0`    | Position size multiplier in trending-down regime           |
+| `TRENDING_UP_SIZE_MULTIPLIER` | `float` | `0.5`  | Position size multiplier in trending-up regime             |
+| `MODERATE_STRENGTH_MULTIPLIER` | `float` | `0.4`  | Position size multiplier for MODERATE strength signals     |
 | `MAX_LATENCY_MS`            | `int`   | `100`    | Max allowed signal age in milliseconds (from ExecutionConfig)|

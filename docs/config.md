@@ -92,7 +92,9 @@ Risk management parameters.
 | `cooldown_after_losses` | `COOLDOWN_AFTER_LOSSES` | 5 | Consecutive losses before cooldown |
 | `cooldown_duration_s` | `COOLDOWN_DURATION_S` | 30.0 | Cooldown duration (seconds) |
 | `sideways_size_multiplier` | `SIDEWAYS_SIZE_MULTIPLIER` | 0.4 | Size reduction in sideways markets |
-| `trend_size_multiplier` | `TREND_SIZE_MULTIPLIER` | 1.0 | Size multiplier in trending markets |
+| `trend_size_multiplier` | `TREND_SIZE_MULTIPLIER` | 1.0 | Size multiplier in trending-down markets |
+| `trending_up_size_multiplier` | `TRENDING_UP_SIZE_MULTIPLIER` | 0.5 | Size multiplier in trending-up markets (reduced — ML underperforms in uptrends) |
+| `moderate_strength_multiplier` | `MODERATE_STRENGTH_MULTIPLIER` | 0.4 | Size multiplier for MODERATE strength signals (data shows worst-performing class) |
 
 ## ExecutionConfig
 

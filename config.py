@@ -207,8 +207,16 @@ class RiskConfig:
     sideways_size_multiplier: float = float(
         os.getenv("SIDEWAYS_SIZE_MULTIPLIER", "0.4")
     )
-    # Trending-market multiplier.
+    # Trending-market multiplier (for TRENDING_DOWN).
     trend_size_multiplier: float = float(os.getenv("TREND_SIZE_MULTIPLIER", "1.0"))
+    # Trending-up multiplier (separate from down — data shows ML underperforms in uptrends).
+    trending_up_size_multiplier: float = float(
+        os.getenv("TRENDING_UP_SIZE_MULTIPLIER", "0.5")
+    )
+    # Strength multiplier for MODERATE signals (data shows worst-performing strength class).
+    moderate_strength_multiplier: float = float(
+        os.getenv("MODERATE_STRENGTH_MULTIPLIER", "0.4")
+    )
 
 
 # ---------------------------------------------------------------------------
