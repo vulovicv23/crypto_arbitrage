@@ -77,6 +77,7 @@ Trading strategy parameters.
 | `far_min_edge` | `FAR_MIN_EDGE` | 0.03 | Min edge for far-expiry bucket |
 | `far_max_edge` | `FAR_MAX_EDGE` | 0.25 | Max edge for far-expiry bucket |
 | `far_size_mult` | `FAR_SIZE_MULT` | 0.7 | Size multiplier for far-expiry bucket |
+| `max_ttl_multiplier` | `MAX_TTL_MULTIPLIER` | 4 | Max TTL as multiple of timeframe (5m×4=20min, 15m×4=60min) |
 
 ## RiskConfig
 

@@ -172,6 +172,7 @@ When `expiry_buckets_enabled=false` (default), flat config thresholds are used f
 | Filter                        | Condition                   | Reason                                    |
 |-------------------------------|-----------------------------|-------------------------------------------|
 | Near-expiry skip              | `seconds_left < 5`         | Order fills become unreliable             |
+| Far-from-expiry skip          | `seconds_left > timeframe × max_ttl_multiplier` | Prediction horizon too short for distant resolution (default: 5m×4=20min, 15m×4=60min) |
 | Extreme mid-price skip        | `mid < 0.01` or `mid > 0.99` | Fully priced in, no edge to capture    |
 | No MarketContext              | `market_ctx is None`       | Token not mapped to a discovered market   |
 | Unknown token outcome         | `outcome is None`          | Token not YES or NO for this market       |

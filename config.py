@@ -177,6 +177,12 @@ class StrategyConfig:
     far_min_edge: float = float(os.getenv("FAR_MIN_EDGE", "0.03"))
     far_max_edge: float = float(os.getenv("FAR_MAX_EDGE", "0.20"))
     far_size_mult: float = float(os.getenv("FAR_SIZE_MULT", "0.7"))
+    # --- Max time-to-expiry filter ---
+    # Only trade markets within (timeframe_seconds × multiplier) of expiry.
+    # Prevents betting on 5m contracts that resolve in 12+ hours, where our
+    # short-horizon prediction model has no edge.
+    # Default 4 → 5m markets: trade within last 20 min; 15m: last 60 min.
+    max_ttl_multiplier: float = float(os.getenv("MAX_TTL_MULTIPLIER", "4"))
 
 
 # ---------------------------------------------------------------------------

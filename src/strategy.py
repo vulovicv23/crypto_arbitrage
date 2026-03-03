@@ -224,6 +224,11 @@ class StrategyEngine:
             if seconds_left < _MIN_SECONDS_TO_TRADE:
                 continue
 
+            # Skip far-from-expiry markets where our prediction has no edge
+            max_ttl = market_ctx.timeframe_seconds * self._cfg.max_ttl_multiplier
+            if seconds_left > max_ttl:
+                continue
+
             # Skip fully-priced-in books
             if book.mid_price <= _MID_PRICE_FLOOR or book.mid_price >= _MID_PRICE_CEIL:
                 continue
