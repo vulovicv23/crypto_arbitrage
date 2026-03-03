@@ -886,8 +886,8 @@ class PositionResolver:
         open_positions = self._risk.state.open_positions
         # Collect condition IDs that still have open positions
         active_cids: set[str] = set()
-        for token_id in open_positions:
-            ctx = self._market_contexts.get(token_id)
+        for position in open_positions.values():
+            ctx = self._market_contexts.get(position.token_id)
             if ctx:
                 active_cids.add(ctx.condition_id)
 
@@ -935,15 +935,15 @@ class PositionResolver:
             return
 
         to_close: list[tuple[str, Position, MarketContext]] = []
-        for token_id, position in list(open_positions.items()):
-            ctx = self._market_contexts.get(token_id)
+        for order_id, position in list(open_positions.items()):
+            ctx = self._market_contexts.get(position.token_id)
             if ctx is None:
                 continue
             if now_ns >= ctx.end_date_ns:
-                to_close.append((token_id, position, ctx))
+                to_close.append((order_id, position, ctx))
 
-        for token_id, position, ctx in to_close:
-            self._resolve_position(token_id, position, ctx, btc_price)
+        for order_id, position, ctx in to_close:
+            self._resolve_position(order_id, position, ctx, btc_price)
 
         # Prune stale contexts after resolving expired positions
         self._prune_stale_contexts()
@@ -1006,7 +1006,7 @@ class PositionResolver:
 
     def _resolve_position(
         self,
-        token_id: str,
+        order_id: str,
         position: Position,
         ctx: MarketContext,
         current_btc_price: float,
@@ -1018,7 +1018,7 @@ class PositionResolver:
                 "No reference price for %s — settling flat",
                 ctx.condition_id[:12],
             )
-            self._risk.record_close(token_id, 0.0, position.size)
+            self._risk.record_close(order_id, 0.0, position.size)
             self._write_resolution(
                 position,
                 ctx,
@@ -1035,7 +1035,7 @@ class PositionResolver:
 
         btc_went_up = current_btc_price > ref_price
 
-        outcome = ctx.token_outcome(token_id)
+        outcome = ctx.token_outcome(position.token_id)
         if outcome == TokenOutcome.YES:
             settlement = 1.0 if btc_went_up else 0.0
         elif outcome == TokenOutcome.NO:
@@ -1052,7 +1052,7 @@ class PositionResolver:
         fee = self._compute_fee(pnl_gross)
         pnl_net = pnl_gross - fee
 
-        self._risk.record_close(token_id, pnl_net, position.size)
+        self._risk.record_close(order_id, pnl_net, position.size)
 
         # Write resolution record to trade log
         self._write_resolution(
@@ -1086,7 +1086,7 @@ class PositionResolver:
             result,
             position.side.value,
             outcome_str,
-            token_id[:12],
+            position.token_id[:12],
             settlement,
             position.entry_price,
             pnl_gross,
@@ -1118,8 +1118,8 @@ class PositionResolver:
             btc_price or 0.0,
         )
 
-        for token_id, position in open_positions.items():
-            ctx = self._market_contexts.get(token_id)
+        for order_id, position in open_positions.items():
+            ctx = self._market_contexts.get(position.token_id)
             ref_price = self._reference_prices.get(
                 ctx.condition_id if ctx else "", 0.0
             )
@@ -1127,7 +1127,7 @@ class PositionResolver:
             unrealized = 0.0
             if btc_price and ref_price and ref_price > 0:
                 btc_went_up = btc_price > ref_price
-                outcome = ctx.token_outcome(token_id) if ctx else None
+                outcome = ctx.token_outcome(position.token_id) if ctx else None
                 if outcome == TokenOutcome.YES:
                     settlement_est = 1.0 if btc_went_up else 0.0
                 elif outcome == TokenOutcome.NO:
@@ -1163,7 +1163,7 @@ class PositionResolver:
                     logger.exception("Snapshot log write failed")
 
             # Clean up risk manager (close position without PnL)
-            self._risk.record_close(token_id, 0.0, position.size)
+            self._risk.record_close(order_id, 0.0, position.size)
 
     def force_resolve_all(self) -> None:
         """Resolve all open positions at current BTC price (used at shutdown).
@@ -1187,15 +1187,15 @@ class PositionResolver:
             btc_price,
         )
 
-        for token_id, position in open_positions.items():
-            ctx = self._market_contexts.get(token_id)
+        for order_id, position in open_positions.items():
+            ctx = self._market_contexts.get(position.token_id)
             if ctx is None:
                 # No context — settle flat
-                self._risk.record_close(token_id, 0.0, position.size)
+                self._risk.record_close(order_id, 0.0, position.size)
                 self._total_resolved += 1
                 continue
             self._resolve_position(
-                token_id,
+                order_id,
                 position,
                 ctx,
                 btc_price,

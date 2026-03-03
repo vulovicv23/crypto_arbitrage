@@ -65,7 +65,7 @@ size = base * regime_multiplier * strength_multiplier * confidence_multiplier * 
 
 **RiskState** tracks:
 - `capital` — Current capital (initial + cumulative realized PnL; updated on every `record_close()`)
-- `open_positions` — Dict of `token_id → Position`
+- `open_positions` — Dict of `order_id → Position`
 - `daily_pnl` — `DailyPnL` tracker
 - `consecutive_losses` — Loss streak counter
 - `cooldown_until` — Monotonic time cooldown expires
@@ -89,7 +89,7 @@ At the start of each new trading day:
 |--------|-------------|
 | `check_signal(signal)` | Evaluate signal against all risk checks |
 | `record_fill(position)` | Register a new open position |
-| `record_close(token_id, pnl, volume)` | Record a closed trade, update P&L, adjust capital by `pnl` |
+| `record_close(order_id, pnl, volume)` | Record a closed trade, update P&L, adjust capital by `pnl` |
 
 ### Key Properties
 

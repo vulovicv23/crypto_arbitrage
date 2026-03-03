@@ -117,7 +117,7 @@ class RiskManager:
 
     def record_fill(self, position: Position) -> None:
         """Register a new open position."""
-        self._state.open_positions[position.token_id] = position
+        self._state.open_positions[position.order_id] = position
         logger.info(
             "Position opened: %s %s size=%.2f",
             position.side.value,
@@ -125,9 +125,9 @@ class RiskManager:
             position.size,
         )
 
-    def record_close(self, token_id: str, pnl: float, volume: float) -> None:
+    def record_close(self, order_id: str, pnl: float, volume: float) -> None:
         """Record a closed trade and update capital with realized PnL."""
-        self._state.open_positions.pop(token_id, None)
+        self._state.open_positions.pop(order_id, None)
         self._state.daily_pnl.record_trade(pnl, volume)
 
         # Track capital so position sizing reflects realized gains/losses

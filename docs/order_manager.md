@@ -63,7 +63,7 @@ After submission, spawns an async task (`_track_order`) that polls for fill stat
 ### Position Exit
 
 ```python
-await order_manager.close_position(token_id, current_price)
+await order_manager.close_position(order_id, current_price)
 ```
 
 Submits the opposite side order. Returns realized P&L or None on failure.

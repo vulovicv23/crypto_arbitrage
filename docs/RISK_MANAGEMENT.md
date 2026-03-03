@@ -289,7 +289,7 @@ class RiskState:
     halt_reason: str = ""
 ```
 
-`open_positions` is keyed by `token_id`. Positions are added via `record_fill()` and removed via `record_close()`.
+`open_positions` is keyed by `order_id`. Each position is uniquely identified by its order ID, allowing multiple positions on the same token. Positions are added via `record_fill()` and removed via `record_close()`.
 
 ### Total Exposure Calculation
 

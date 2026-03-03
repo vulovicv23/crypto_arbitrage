@@ -255,20 +255,20 @@ class OrderManager:
 
     # ── position exit ─────────────────────────────────────────────────
 
-    async def close_position(self, token_id: str, current_price: float) -> float | None:
+    async def close_position(self, order_id: str, current_price: float) -> float | None:
         """
         Close an open position by submitting the opposite side.
 
         Returns realised P&L or None on failure.
         """
-        pos = self._risk.state.open_positions.get(token_id)
+        pos = self._risk.state.open_positions.get(order_id)
         if pos is None:
             return None
 
         exit_side = Side.SELL if pos.side == Side.BUY else Side.BUY
         try:
             await self._poly.place_order(
-                token_id=token_id,
+                token_id=pos.token_id,
                 side=exit_side,
                 price=current_price,
                 size=pos.size,
@@ -278,17 +278,17 @@ class OrderManager:
             else:
                 pnl = (pos.entry_price - current_price) * pos.size
 
-            self._risk.record_close(token_id, pnl, pos.size)
+            self._risk.record_close(order_id, pnl, pos.size)
             logger.info(
                 "POSITION CLOSED: %s pnl=%.4f size=%.2f",
-                token_id[:12],
+                pos.token_id[:12],
                 pnl,
                 pos.size,
             )
             return pnl
 
         except Exception:
-            logger.exception("Failed to close position %s", token_id[:12])
+            logger.exception("Failed to close position %s", pos.token_id[:12])
             return None
 
     # ── trade logging ─────────────────────────────────────────────────
