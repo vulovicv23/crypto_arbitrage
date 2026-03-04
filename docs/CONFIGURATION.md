@@ -181,7 +181,10 @@ Controls position sizing, daily limits, and cooldowns.
 | `cooldown_after_losses`   | `COOLDOWN_AFTER_LOSSES`    | `int`   | `5`     | Consecutive losses before cooldown                   |
 | `cooldown_duration_s`     | `COOLDOWN_DURATION_S`      | `float` | `30.0`  | Cooldown pause duration (seconds)                    |
 | `sideways_size_multiplier`| `SIDEWAYS_SIZE_MULTIPLIER` | `float` | `0.4`   | Position size multiplier in sideways regime          |
-| `trend_size_multiplier`   | `TREND_SIZE_MULTIPLIER`    | `float` | `1.0`   | Position size multiplier in trending regime          |
+| `trend_size_multiplier`   | `TREND_SIZE_MULTIPLIER`    | `float` | `1.0`   | Position size multiplier in trending-down regime     |
+| `trending_up_size_multiplier` | `TRENDING_UP_SIZE_MULTIPLIER` | `float` | `0.5` | Position size multiplier in trending-up regime (reduced — ML underperforms in uptrends) |
+| `moderate_strength_multiplier` | `MODERATE_STRENGTH_MULTIPLIER` | `float` | `0.4` | Position size multiplier for MODERATE strength signals |
+| `weak_strength_multiplier` | `WEAK_STRENGTH_MULTIPLIER` | `float` | `0.5` | Position size multiplier for WEAK strength signals (0 = skip) |
 
 ---
 
@@ -220,15 +223,17 @@ Controls the optional ML prediction pipeline. Disabled by default — when enabl
 |------------------------|---------------------------|---------|---------------------------|-------------------------------------------------------|
 | `enabled`              | `ML_ENABLED`              | `bool`  | `false`                   | Master switch for ML prediction pipeline              |
 | `model_path`           | `ML_MODEL_PATH`           | `str`   | `models/btc_5m_v3.pkl`   | Path to trained LightGBM .pkl artifact                |
+| `model_type`           | `ML_MODEL_TYPE`           | `str`   | `"regression"`            | Model type: `"regression"` (v4+) or `"classification"` (v3) |
 | `feature_window`       | `ML_FEATURE_WINDOW`       | `int`   | `4000`                    | Rolling buffer size in seconds                        |
 | `prediction_interval`  | `ML_PREDICTION_INTERVAL`  | `float` | `0.25`                    | How often to emit predictions (seconds)               |
-| `min_confidence`       | `ML_MIN_CONFIDENCE`       | `float` | `0.1`                     | Minimum confidence threshold to emit signal           |
+| `min_confidence`       | `ML_MIN_CONFIDENCE`       | `float` | `0.1`                     | Minimum confidence threshold (classification only)    |
+| `min_predicted_return` | `ML_MIN_PREDICTED_RETURN` | `float` | `0.0001`                  | Minimum absolute predicted return to emit (regression noise gate) |
 | `max_predicted_return` | `ML_MAX_PREDICTED_RETURN` | `float` | `0.01`                    | Cap on predicted price magnitude (1%)                 |
 | `horizon_s`            | `ML_HORIZON_S`            | `int`   | `300`                     | Prediction time horizon matching training labels (s)  |
 
 **`enabled`** is parsed as truthy: `"true"`, `"1"`, `"yes"` (case-insensitive) all evaluate to `True`.
 
-**Model artifact requirements:** The .pkl file must contain a `"model"` key with a LightGBM booster and a `"num_features"` key matching the feature engine's output (58). Optional `"calibrator"` key for isotonic calibration.
+**Model artifact requirements:** The .pkl file must contain a `"model"` key with a LightGBM model and a `"num_features"` key matching the feature engine's output (58). The `"model_type"` key (`"regression"` or `"classification"`) determines the inference path; artifacts missing this key default to `"classification"`. Classification artifacts may include an optional `"calibrator"` key for isotonic calibration.
 
 **Warmup:** The feature engine requires 3661 ticks (~61 minutes of data) before producing predictions. During warmup, the ML predictor silently skips inference.
 
@@ -256,6 +261,11 @@ Controls log output destinations and rotation.
 1. **`POLY_API_KEY` is required.** Raises `ValueError` if empty.
 2. **`POLY_PRIVATE_KEY` is required.** Raises `ValueError` if empty.
 3. **`POLY_BTC_CONDITION_IDS` is required when discovery is disabled.** If `DISCOVERY_ENABLED=false` and `btc_condition_ids` is empty, raises `ValueError`.
+4. **Strategy**: `min_edge > 0`, `max_edge > min_edge`, `near_expiry_s < far_expiry_s`.
+5. **Risk**: All percentage params in `(0, 1)`, `max_open_positions ≥ 1`, `cooldown_after_losses ≥ 1`, `cooldown_duration_s > 0`.
+6. **Execution**: `max_latency_ms > 0`, `max_orders_per_second ≥ 1`.
+7. **Fees**: `taker_fee_pct ∈ [0, 1)`, `maker_fee_pct ∈ [0, 1)`.
+8. **ML** (when enabled): `feature_window ≥ 100`, `prediction_interval > 0`, `min_confidence ∈ [0, 1]`, `model_type ∈ {"classification", "regression"}`, `min_predicted_return ≥ 0`.
 
 In dry-run mode (`--dry-run`), `main.py` catches these validation errors and creates an unvalidated config with a warning printed to stdout.
 
@@ -308,7 +318,10 @@ All configurable environment variables in one table:
 | `COOLDOWN_AFTER_LOSSES`     | `RiskConfig`            | `int`       | `5`        | No       | Consecutive losses before cooldown             |
 | `COOLDOWN_DURATION_S`       | `RiskConfig`            | `float`     | `30.0`     | No       | Cooldown duration (seconds)                    |
 | `SIDEWAYS_SIZE_MULTIPLIER`  | `RiskConfig`            | `float`     | `0.4`      | No       | Sizing multiplier for sideways regime          |
-| `TREND_SIZE_MULTIPLIER`     | `RiskConfig`            | `float`     | `1.0`      | No       | Sizing multiplier for trending regime          |
+| `TREND_SIZE_MULTIPLIER`     | `RiskConfig`            | `float`     | `1.0`      | No       | Sizing multiplier for trending-down regime     |
+| `TRENDING_UP_SIZE_MULTIPLIER` | `RiskConfig`          | `float`     | `0.5`      | No       | Sizing multiplier for trending-up regime       |
+| `MODERATE_STRENGTH_MULTIPLIER` | `RiskConfig`         | `float`     | `0.4`      | No       | Sizing multiplier for MODERATE signals         |
+| `WEAK_STRENGTH_MULTIPLIER`  | `RiskConfig`            | `float`     | `0.5`      | No       | Sizing multiplier for WEAK signals (0 = skip)  |
 | `MAX_LATENCY_MS`            | `ExecutionConfig`       | `int`       | `100`      | No       | Max signal age (ms)                            |
 | `MAX_ORDERS_PER_SECOND`     | `ExecutionConfig`       | `int`       | `50`       | No       | Rate limit cap                                 |
 | `HTTP_POOL_SIZE`            | `ExecutionConfig`       | `int`       | `20`       | No       | HTTP connection pool size                      |
@@ -318,7 +331,9 @@ All configurable environment variables in one table:
 | `ML_MODEL_PATH`             | `MLConfig`              | `str`       | `models/btc_5m_v3.pkl` | No | Path to trained model artifact          |
 | `ML_FEATURE_WINDOW`         | `MLConfig`              | `int`       | `4000`     | No       | Rolling buffer size (seconds)                  |
 | `ML_PREDICTION_INTERVAL`    | `MLConfig`              | `float`     | `0.25`     | No       | Prediction emit interval (seconds)             |
-| `ML_MIN_CONFIDENCE`         | `MLConfig`              | `float`     | `0.1`      | No       | Minimum confidence threshold                   |
+| `ML_MODEL_TYPE`             | `MLConfig`              | `str`       | `"regression"` | No   | Model type: regression or classification       |
+| `ML_MIN_CONFIDENCE`         | `MLConfig`              | `float`     | `0.1`      | No       | Minimum confidence threshold (classification)  |
+| `ML_MIN_PREDICTED_RETURN`   | `MLConfig`              | `float`     | `0.0001`   | No       | Min predicted return noise gate (regression)   |
 | `ML_MAX_PREDICTED_RETURN`   | `MLConfig`              | `float`     | `0.01`     | No       | Max predicted price magnitude (1%)             |
 | `ML_HORIZON_S`              | `MLConfig`              | `int`       | `300`      | No       | Prediction horizon (seconds)                   |
 | `LOG_LEVEL`                 | `LoggingConfig`         | `str`       | `"INFO"`   | No       | Log level                                      |

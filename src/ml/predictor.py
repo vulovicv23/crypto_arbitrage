@@ -1,8 +1,12 @@
 """
-Async ML prediction source for BTC direction forecasting.
+Async ML prediction source for BTC direction/return forecasting.
 
 Loads a trained LightGBM model and emits ``Prediction`` objects into the
 shared prediction queue — identical interface to ``PredictionAggregator``.
+
+Supports both model types:
+  - **regression** (v4+): model.predict() → continuous return → confidence=1.0
+  - **classification** (v3): model.predict_proba() → P(up) → confidence derived
 
 Architecture::
 
@@ -11,7 +15,7 @@ Architecture::
                    _predict_loop ◀─────────┘
                        │
                        ▼
-              model.predict_proba()  (<1 ms)
+              model.predict()  (<1 ms)
                        │
                        ▼
               prediction_queue.put_nowait(Prediction)
@@ -53,6 +57,7 @@ class MLPredictor:
         feature_window: int = 4000,
         prediction_interval: float = 0.25,
         min_confidence: float = 0.1,
+        min_predicted_return: float = 0.0001,
         max_predicted_return: float = 0.01,
         horizon_s: int = 300,
     ) -> None:
@@ -61,13 +66,24 @@ class MLPredictor:
 
         self._prediction_interval = prediction_interval
         self._min_confidence = min_confidence
+        self._min_predicted_return = min_predicted_return
         self._max_predicted_return = max_predicted_return
         self._horizon_s = horizon_s
 
         self._feature_engine = FeatureEngine(buffer_size=feature_window)
         self._model_artifact = self._load_model(model_path)
         self._model = self._model_artifact["model"]
-        self._calibrator = self._model_artifact.get("calibrator")
+
+        # Auto-detect model type from artifact (backward compat: default to classification)
+        self._model_type: str = self._model_artifact.get(
+            "model_type", "classification"
+        )
+
+        # Only load calibrator for classification models
+        if self._model_type == "classification":
+            self._calibrator = self._model_artifact.get("calibrator")
+        else:
+            self._calibrator = None
 
         # Stats
         self._predictions_emitted: int = 0
@@ -83,7 +99,7 @@ class MLPredictor:
         """Load a trained model artifact from disk.
 
         Expected keys: ``model``, ``feature_names``, ``horizon_s``.
-        Optional keys: ``calibrator``, ``version``, ``metrics``.
+        Optional keys: ``calibrator``, ``version``, ``metrics``, ``model_type``.
         """
         p = Path(path)
         if not p.exists():
@@ -106,9 +122,11 @@ class MLPredictor:
                 f"Re-train with: python tools/train_model.py"
             )
 
+        model_type = artifact.get("model_type", "classification")
         logger.info(
-            "Loaded ML model: version=%s, horizon=%ds, features=%d",
+            "Loaded ML model: version=%s, type=%s, horizon=%ds, features=%d",
             artifact.get("version", "unknown"),
+            model_type,
             artifact.get("horizon_s", 0),
             len(artifact.get("feature_names", [])),
         )
@@ -121,9 +139,9 @@ class MLPredictor:
     async def start(self) -> None:
         """Run ingestion and prediction loops concurrently."""
         logger.info(
-            "MLPredictor starting: interval=%.2fs, min_conf=%.2f, horizon=%ds",
+            "MLPredictor starting: type=%s interval=%.2fs horizon=%ds",
+            self._model_type,
             self._prediction_interval,
-            self._min_confidence,
             self._horizon_s,
         )
         await asyncio.gather(
@@ -181,20 +199,32 @@ class MLPredictor:
 
             if self._predictions_emitted % 100 == 0:
                 logger.info(
-                    "MLPredictor: emitted=%d skipped=%d ingested=%d p_up=%.4f conf=%.4f",
+                    "MLPredictor [%s]: emitted=%d skipped=%d ingested=%d "
+                    "pred_return=%.6f conf=%.4f",
+                    self._model_type,
                     self._predictions_emitted,
                     self._predictions_skipped,
                     self._ingest_count,
-                    prediction.confidence,
                     abs(prediction.predicted_return),
+                    prediction.confidence,
                 )
 
     # ------------------------------------------------------------------
-    # Inference
+    # Inference — dispatcher
     # ------------------------------------------------------------------
 
     def _predict(self) -> Prediction | None:
-        """Run one inference cycle. Returns Prediction or None."""
+        """Run one inference cycle. Dispatches to model-type-specific path."""
+        if self._model_type == "regression":
+            return self._predict_regression()
+        return self._predict_classification()
+
+    # ------------------------------------------------------------------
+    # Regression inference (v4+)
+    # ------------------------------------------------------------------
+
+    def _predict_regression(self) -> Prediction | None:
+        """Regression path: model predicts continuous return directly."""
         features = self._feature_engine.compute(
             seconds_to_expiry=float(self._horizon_s),
             total_seconds=float(self._horizon_s),
@@ -202,7 +232,60 @@ class MLPredictor:
         if features is None:
             return None
 
-        # LightGBM inference — typically <1ms
+        # LightGBM regression inference — typically <1ms
+        t0 = time.time_ns()
+        try:
+            raw_return = float(self._model.predict(features.reshape(1, -1))[0])
+        except Exception as e:
+            logger.warning("ML inference error: %s", e)
+            return None
+        inference_ns = time.time_ns() - t0
+
+        # Gate: skip if predicted return is below noise floor
+        if abs(raw_return) < self._min_predicted_return:
+            return None
+
+        # Clip to reasonable range
+        clipped_return = max(
+            -self._max_predicted_return,
+            min(raw_return, self._max_predicted_return),
+        )
+
+        # Convert to predicted price
+        current_price = self._feature_engine.latest_price
+        if current_price <= 0:
+            return None
+
+        predicted_price = current_price * (1.0 + clipped_return)
+
+        # Regression: confidence = 1.0 always (no triple-counting)
+        confidence = 1.0
+
+        if inference_ns > 5_000_000:  # > 5ms — log warning
+            logger.warning("ML inference slow: %.1fms", inference_ns / 1_000_000)
+
+        return Prediction(
+            source="ml_lgbm",
+            predicted_price=predicted_price,
+            current_price=current_price,
+            horizon_s=self._horizon_s,
+            confidence=confidence,
+        )
+
+    # ------------------------------------------------------------------
+    # Classification inference (v3 backward compat)
+    # ------------------------------------------------------------------
+
+    def _predict_classification(self) -> Prediction | None:
+        """Classification path: model predicts P(up) probability."""
+        features = self._feature_engine.compute(
+            seconds_to_expiry=float(self._horizon_s),
+            total_seconds=float(self._horizon_s),
+        )
+        if features is None:
+            return None
+
+        # LightGBM classification inference — typically <1ms
         t0 = time.time_ns()
         try:
             raw_proba = self._model.predict_proba(features.reshape(1, -1))[0, 1]
@@ -250,6 +333,7 @@ class MLPredictor:
     def stats(self) -> dict:
         """Return a snapshot of predictor statistics."""
         return {
+            "model_type": self._model_type,
             "predictions_emitted": self._predictions_emitted,
             "predictions_skipped": self._predictions_skipped,
             "ticks_ingested": self._ingest_count,

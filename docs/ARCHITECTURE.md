@@ -119,7 +119,9 @@ When `ML_ENABLED=true`, the bot adds a parallel prediction path:
 
 4. **Warmup**: Requires 3661 1-second bars (~61 minutes) before first prediction. The `FeatureEngine` returns `None` until sufficient data is accumulated.
 
-5. **Confidence**: `|p_up - 0.5| × 2.0`, filtered by `ML_MIN_CONFIDENCE` threshold.
+5. **Dual model types** (auto-detected from artifact `model_type` key):
+   - **Regression** (v4+, default): `model.predict()` → continuous return. Gated by `ML_MIN_PREDICTED_RETURN` (noise floor). Confidence is always `1.0` — the return magnitude IS the signal. This eliminates the confidence triple-counting problem (gate → strategy dampening → position sizing).
+   - **Classification** (v3, backward compat): `model.predict_proba()` → P(up). Confidence = `|p_up - 0.5| × 2.0`, filtered by `ML_MIN_CONFIDENCE`. Old artifacts without a `model_type` key default to classification.
 
 When ML is disabled (default), the price splitter is not created and the pipeline works as before.
 

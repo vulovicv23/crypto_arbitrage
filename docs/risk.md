@@ -44,7 +44,7 @@ size = base * regime_multiplier * strength_multiplier * confidence_multiplier * 
 |--------|---------|
 | `base` | `capital * max_position_pct` (default: 0.5% = $50 on $10k) |
 | `regime_multiplier` | SIDEWAYS: 0.4x, TRENDING_UP: 0.5x, TRENDING_DOWN: 1.0x |
-| `strength_multiplier` | WEAK: 0.5x, MODERATE: 0.4x (configurable), STRONG: 1.0x |
+| `strength_multiplier` | WEAK: 0.5x (configurable), MODERATE: 0.4x (configurable), STRONG: 1.0x |
 | `confidence_multiplier` | prediction confidence (0.0–1.0) |
 | `expiry_multiplier` | From `Signal.size_multiplier` (default: 1.0; see expiry buckets in `docs/strategy.md`) |
 
@@ -62,6 +62,7 @@ size = base * regime_multiplier * strength_multiplier * confidence_multiplier * 
 | `trend_size_multiplier` | `TREND_SIZE_MULTIPLIER` | 1.0 | Size multiplier in trending-down markets |
 | `trending_up_size_multiplier` | `TRENDING_UP_SIZE_MULTIPLIER` | 0.5 | Size multiplier in trending-up markets |
 | `moderate_strength_multiplier` | `MODERATE_STRENGTH_MULTIPLIER` | 0.4 | Size multiplier for MODERATE signals |
+| `weak_strength_multiplier` | `WEAK_STRENGTH_MULTIPLIER` | 0.5 | Size multiplier for WEAK signals (0 = skip WEAK trades) |
 
 ### State Management
 

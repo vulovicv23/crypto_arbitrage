@@ -256,7 +256,7 @@ Applied in `_compute_size()` based on the `signal.strength` field:
 
 | Strength   | Multiplier | Edge Range (with default threshold)  |
 |------------|------------|--------------------------------------|
-| `WEAK`     | `0.5`      | `0.02 <= edge < 0.03`               |
+| `WEAK`     | `0.5` (configurable) | `0.02 <= edge < 0.03`    |
 | `MODERATE` | `0.4` (configurable) | `0.03 <= edge < 0.05`     |
 | `STRONG`   | `1.0`      | `0.05 <= edge < 0.30`               |
 
@@ -264,14 +264,14 @@ Edge values are in **probability space** (not return space). A `WEAK` signal mea
 
 ```python
 strength_map = {
-    SignalStrength.WEAK: 0.5,
+    SignalStrength.WEAK: self._cfg.weak_strength_multiplier,         # 0.5
     SignalStrength.MODERATE: self._cfg.moderate_strength_multiplier,  # 0.4
     SignalStrength.STRONG: 1.0,
 }
 strength_mult = strength_map.get(signal.strength, 0.5)
 ```
 
-The `MODERATE` multiplier is configurable via `MODERATE_STRENGTH_MULTIPLIER` (default `0.4`). Data analysis showed MODERATE signals are the worst-performing strength class (43–49% WR across profiles), so the default was reduced from the original `0.75`.
+Both `WEAK` and `MODERATE` multipliers are configurable. The `MODERATE` multiplier defaults to `0.4` (data showed worst-performing strength class, 43–49% WR). The `WEAK` multiplier defaults to `0.5` and can be set to `0` to skip WEAK trades entirely.
 
 ---
 
@@ -318,4 +318,5 @@ All risk-related environment variables:
 | `TREND_SIZE_MULTIPLIER`     | `float` | `1.0`    | Position size multiplier in trending-down regime           |
 | `TRENDING_UP_SIZE_MULTIPLIER` | `float` | `0.5`  | Position size multiplier in trending-up regime             |
 | `MODERATE_STRENGTH_MULTIPLIER` | `float` | `0.4`  | Position size multiplier for MODERATE strength signals     |
+| `WEAK_STRENGTH_MULTIPLIER`  | `float` | `0.5`  | Position size multiplier for WEAK strength signals (0 = skip) |
 | `MAX_LATENCY_MS`            | `int`   | `100`    | Max allowed signal age in milliseconds (from ExecutionConfig)|

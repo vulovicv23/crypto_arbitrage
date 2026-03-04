@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Train a LightGBM classifier for BTC direction prediction.
+Train a LightGBM model for BTC return prediction (regression or classification).
 
 Uses walk-forward cross-validation to ensure no future data leakage.
 Produces a model artifact (.pkl) that can be loaded by MLPredictor.
 
 Usage:
-    python tools/train_model.py --horizon 300 --output models/btc_5m_v3.pkl
-    python tools/train_model.py --horizon 300 --dead-zone 0.001 --output models/btc_5m_v3.pkl
-    python tools/train_model.py --horizon 300 --dead-zone 0.001 --optuna --optuna-trials 50
+    python tools/train_model.py --horizon 300 --output models/btc_5m_v4_reg.pkl
+    python tools/train_model.py --horizon 300 --dead-zone 0.003 --output models/btc_5m_v4_reg.pkl
+    python tools/train_model.py --horizon 300 --dead-zone 0.003 --optuna --optuna-trials 50
 
 Prerequisites:
     1. PostgreSQL running (docker compose up -d postgres)
@@ -32,13 +32,8 @@ from pathlib import Path
 import joblib
 import lightgbm as lgb
 import numpy as np
-from sklearn.calibration import IsotonicRegression
-from sklearn.metrics import (
-    accuracy_score,
-    brier_score_loss,
-    log_loss,
-    roc_auc_score,
-)
+from scipy.stats import pearsonr
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 # Allow running from project root.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -143,24 +138,32 @@ def generate_labels(
     closes: np.ndarray,
     horizon_steps: int,
     dead_zone: float = 0.0,
+    mode: str = "regression",
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Generate binary labels and returns via array shifting.
+    """Generate labels and returns via array shifting.
 
     Args:
         closes: Close prices, shape (N,).
         horizon_steps: Number of steps (seconds) into the future.
-        dead_zone: Minimum absolute return to count as a directional move.
-            Samples with |return| <= dead_zone get label -1 (excluded).
+        dead_zone: Minimum absolute return to count as a valid sample.
+            For classification: samples with |return| <= dead_zone get label -1.
+            For regression: samples with |return| <= dead_zone get label NaN.
             Set to 0.0 (default) for no dead-zone filtering.
+        mode: "regression" (continuous returns) or "classification" (binary 0/1).
 
     Returns:
-        labels: 1 if price goes up, 0 if down, -1 if invalid or in dead zone.
+        labels: For regression: continuous fractional returns (NaN = invalid).
+                For classification: 1 if up, 0 if down, -1 if invalid/dead zone.
                 Shape (N,).
         returns: Fractional return. Shape (N,), last entries are NaN.
     """
     n = len(closes)
-    labels = np.full(n, -1, dtype=np.int8)
     returns = np.full(n, np.nan, dtype=np.float64)
+
+    if mode == "regression":
+        labels = np.full(n, np.nan, dtype=np.float64)
+    else:
+        labels = np.full(n, -1, dtype=np.int8)
 
     if horizon_steps >= n:
         return labels, returns
@@ -172,15 +175,23 @@ def generate_labels(
     ret = (future - current) / safe_current
     returns[: n - horizon_steps] = ret
 
-    # Binary direction labels
-    direction = (future > current).astype(np.int8)
-
-    if dead_zone > 0:
-        # Only label samples where |return| > dead_zone
-        significant = np.abs(ret) > dead_zone
-        labels[: n - horizon_steps] = np.where(significant, direction, np.int8(-1))
+    if mode == "regression":
+        # Continuous return labels
+        if dead_zone > 0:
+            significant = np.abs(ret) > dead_zone
+            labels[: n - horizon_steps] = np.where(significant, ret, np.nan)
+        else:
+            labels[: n - horizon_steps] = ret
     else:
-        labels[: n - horizon_steps] = direction
+        # Binary direction labels (classification)
+        direction = (future > current).astype(np.int8)
+        if dead_zone > 0:
+            significant = np.abs(ret) > dead_zone
+            labels[: n - horizon_steps] = np.where(
+                significant, direction, np.int8(-1)
+            )
+        else:
+            labels[: n - horizon_steps] = direction
 
     return labels, returns
 
@@ -201,12 +212,13 @@ class FoldResult:
     test_end_ms: int
     n_train: int
     n_test: int
-    brier_score: float
-    log_loss_val: float
-    accuracy: float
-    auc_roc: float
-    label_mean: float  # fraction of positive labels in test
-    pred_mean: float  # mean predicted probability
+    rmse: float
+    mae: float
+    r2: float
+    direction_accuracy: float  # fraction of correct sign predictions
+    ic: float  # information coefficient (Pearson correlation)
+    label_mean: float  # mean of test labels
+    pred_mean: float  # mean of predictions
 
 
 def walk_forward_splits(
@@ -338,11 +350,11 @@ DEFAULT_LGB_PARAMS: dict = dict(
     max_depth=6,
     num_leaves=31,
     learning_rate=0.05,
-    min_child_samples=200,
+    min_child_samples=50,
     subsample=0.8,
     colsample_bytree=0.8,
-    reg_alpha=0.1,
-    reg_lambda=1.0,
+    reg_alpha=0.01,
+    reg_lambda=0.1,
     random_state=42,
     verbose=-1,
     n_jobs=-1,
@@ -359,10 +371,19 @@ def _get_valid_mask(
     labels: np.ndarray,
     indices: np.ndarray,
 ) -> np.ndarray:
-    """Return boolean mask for rows with valid core features and valid label."""
-    return ~np.any(np.isnan(features[indices, :_N_CORE_FEATURES]), axis=1) & (
-        labels[indices] >= 0
-    )
+    """Return boolean mask for rows with valid core features and valid label.
+
+    Handles both regression labels (NaN = invalid) and classification labels
+    (-1 = invalid).
+    """
+    valid_features = ~np.any(np.isnan(features[indices, :_N_CORE_FEATURES]), axis=1)
+    if labels.dtype.kind == "f":
+        # Regression: float labels, NaN = invalid
+        valid_labels = ~np.isnan(labels[indices])
+    else:
+        # Classification: int labels, -1 = invalid
+        valid_labels = labels[indices] >= 0
+    return valid_features & valid_labels
 
 
 def train_and_evaluate(
@@ -373,12 +394,12 @@ def train_and_evaluate(
     test_weeks: int,
     horizon_s: int,
     lgb_overrides: dict | None = None,
-) -> tuple[lgb.LGBMClassifier, list[FoldResult], IsotonicRegression | None]:
-    """Run walk-forward CV and train a final model.
+) -> tuple[lgb.LGBMRegressor, list[FoldResult]]:
+    """Run walk-forward CV and train a final regression model.
 
     Args:
         features: Feature matrix, shape (N, NUM_FEATURES).
-        labels: Label array, shape (N,).
+        labels: Label array, shape (N,) — continuous returns (NaN = invalid).
         timestamps_ms: Timestamps, shape (N,).
         train_weeks: Training window in weeks.
         test_weeks: Test window in weeks.
@@ -386,7 +407,7 @@ def train_and_evaluate(
         lgb_overrides: Optional dict of LightGBM params to override defaults.
 
     Returns:
-        (final_model, fold_results, calibrator_or_none)
+        (final_model, fold_results)
     """
     # LightGBM hyperparameters
     lgb_params = {**DEFAULT_LGB_PARAMS}
@@ -410,8 +431,6 @@ def train_and_evaluate(
         )
 
     fold_results: list[FoldResult] = []
-    all_test_labels: list[np.ndarray] = []
-    all_test_preds: list[np.ndarray] = []
 
     for i, (train_idx, test_idx) in enumerate(splits):
         # Filter valid rows (no NaN in core features, valid label)
@@ -419,16 +438,16 @@ def train_and_evaluate(
         test_valid = _get_valid_mask(features, labels, test_idx)
 
         X_train = features[train_idx[train_valid]]
-        y_train = labels[train_idx[train_valid]]
+        y_train = labels[train_idx[train_valid]].astype(np.float64)
         X_test = features[test_idx[test_valid]]
-        y_test = labels[test_idx[test_valid]]
+        y_test = labels[test_idx[test_valid]].astype(np.float64)
 
         if len(X_train) < 100 or len(X_test) < 100:
             logger.warning("Fold %d: insufficient data, skipping", i + 1)
             continue
 
         # Train with early stopping
-        model = lgb.LGBMClassifier(**lgb_params)
+        model = lgb.LGBMRegressor(**lgb_params)
 
         # Use last 10% of train as validation for early stopping
         val_split = int(len(X_train) * 0.9)
@@ -436,14 +455,28 @@ def train_and_evaluate(
             X_train[:val_split],
             y_train[:val_split],
             eval_set=[(X_train[val_split:], y_train[val_split:])],
-            callbacks=[lgb.early_stopping(50, verbose=False)],
+            callbacks=[lgb.early_stopping(100, verbose=False)],
         )
 
         # Predict on test
-        y_pred_proba = model.predict_proba(X_test)[:, 1]
-        y_pred_class = (y_pred_proba > 0.5).astype(int)
+        y_pred = model.predict(X_test)
 
-        # Metrics
+        # Regression metrics
+        rmse = float(np.sqrt(mean_squared_error(y_test, y_pred)))
+        mae = float(mean_absolute_error(y_test, y_pred))
+        r2 = float(r2_score(y_test, y_pred))
+
+        # Direction accuracy: does the sign match?
+        sign_match = np.sign(y_pred) == np.sign(y_test)
+        direction_acc = float(sign_match.mean())
+
+        # Information coefficient (Pearson correlation)
+        if len(y_test) > 2:
+            ic_val, _ = pearsonr(y_pred, y_test)
+            ic_val = float(ic_val)
+        else:
+            ic_val = 0.0
+
         result = FoldResult(
             fold=i + 1,
             train_start_ms=int(timestamps_ms[train_idx[0]]),
@@ -452,45 +485,46 @@ def train_and_evaluate(
             test_end_ms=int(timestamps_ms[test_idx[-1]]),
             n_train=len(X_train),
             n_test=len(X_test),
-            brier_score=float(brier_score_loss(y_test, y_pred_proba)),
-            log_loss_val=float(log_loss(y_test, y_pred_proba)),
-            accuracy=float(accuracy_score(y_test, y_pred_class)),
-            auc_roc=float(roc_auc_score(y_test, y_pred_proba)),
+            rmse=rmse,
+            mae=mae,
+            r2=r2,
+            direction_accuracy=direction_acc,
+            ic=ic_val,
             label_mean=float(y_test.mean()),
-            pred_mean=float(y_pred_proba.mean()),
+            pred_mean=float(y_pred.mean()),
         )
         fold_results.append(result)
-        all_test_labels.append(y_test)
-        all_test_preds.append(y_pred_proba)
 
         logger.info(
-            "Fold %2d: Brier=%.4f  LogLoss=%.4f  Acc=%.4f  AUC=%.4f  "
-            "n_train=%s  n_test=%s  label_mean=%.3f",
+            "Fold %2d: RMSE=%.6f  MAE=%.6f  R²=%.4f  DirAcc=%.4f  IC=%.4f  "
+            "n_train=%s  n_test=%s",
             result.fold,
-            result.brier_score,
-            result.log_loss_val,
-            result.accuracy,
-            result.auc_roc,
+            result.rmse,
+            result.mae,
+            result.r2,
+            result.direction_accuracy,
+            result.ic,
             f"{result.n_train:,}",
             f"{result.n_test:,}",
-            result.label_mean,
         )
 
     if not fold_results:
         raise ValueError("All folds failed. Check data quality.")
 
     # Aggregate metrics
-    avg_brier = np.mean([r.brier_score for r in fold_results])
-    avg_logloss = np.mean([r.log_loss_val for r in fold_results])
-    avg_acc = np.mean([r.accuracy for r in fold_results])
-    avg_auc = np.mean([r.auc_roc for r in fold_results])
+    avg_rmse = np.mean([r.rmse for r in fold_results])
+    avg_mae = np.mean([r.mae for r in fold_results])
+    avg_r2 = np.mean([r.r2 for r in fold_results])
+    avg_dir_acc = np.mean([r.direction_accuracy for r in fold_results])
+    avg_ic = np.mean([r.ic for r in fold_results])
 
     logger.info("=" * 60)
     logger.info("WALK-FORWARD SUMMARY (%d folds):", len(fold_results))
-    logger.info("  Avg Brier Score:  %.4f  (coin-flip = 0.2500)", avg_brier)
-    logger.info("  Avg Log-Loss:     %.4f  (coin-flip = 0.6931)", avg_logloss)
-    logger.info("  Avg Accuracy:     %.4f  (coin-flip = 0.5000)", avg_acc)
-    logger.info("  Avg AUC-ROC:      %.4f  (random    = 0.5000)", avg_auc)
+    logger.info("  Avg RMSE:               %.6f", avg_rmse)
+    logger.info("  Avg MAE:                %.6f", avg_mae)
+    logger.info("  Avg R²:                 %.4f  (> 0 = some signal)", avg_r2)
+    logger.info("  Avg Direction Accuracy:  %.4f  (coin-flip = 0.5000)", avg_dir_acc)
+    logger.info("  Avg IC (Pearson):        %.4f  (> 0 = some signal)", avg_ic)
     logger.info("=" * 60)
 
     # ----- Train final model on all data -----
@@ -498,58 +532,18 @@ def train_and_evaluate(
     all_idx = np.arange(len(labels))
     valid_mask = _get_valid_mask(features, labels, all_idx)
     X_all = features[all_idx[valid_mask]]
-    y_all = labels[all_idx[valid_mask]]
+    y_all = labels[all_idx[valid_mask]].astype(np.float64)
 
     # Reserve last 10% for early stopping
     val_split = int(len(X_all) * 0.9)
-    final_model = lgb.LGBMClassifier(**lgb_params)
+    final_model = lgb.LGBMRegressor(**lgb_params)
     final_model.fit(
         X_all[:val_split],
         y_all[:val_split],
         eval_set=[(X_all[val_split:], y_all[val_split:])],
-        callbacks=[lgb.early_stopping(50, verbose=False)],
+        callbacks=[lgb.early_stopping(100, verbose=False)],
     )
     logger.info("Final model trained on %s rows.", f"{len(X_all):,}")
-
-    # ----- Calibration check -----
-    # Combine all out-of-sample predictions for calibration analysis
-    calibrator = None
-    if all_test_labels:
-        all_y = np.concatenate(all_test_labels)
-        all_p = np.concatenate(all_test_preds)
-
-        # Check calibration by decile
-        logger.info("Calibration check (10 bins):")
-        n_bins = 10
-        bin_edges = np.linspace(0, 1, n_bins + 1)
-        max_cal_error = 0.0
-        for j in range(n_bins):
-            mask = (all_p >= bin_edges[j]) & (all_p < bin_edges[j + 1])
-            if mask.sum() > 0:
-                actual = all_y[mask].mean()
-                predicted = all_p[mask].mean()
-                cal_error = abs(actual - predicted)
-                max_cal_error = max(max_cal_error, cal_error)
-                logger.info(
-                    "  Bin [%.1f, %.1f): n=%6d  pred=%.3f  actual=%.3f  err=%.3f",
-                    bin_edges[j],
-                    bin_edges[j + 1],
-                    mask.sum(),
-                    predicted,
-                    actual,
-                    cal_error,
-                )
-
-        # If calibration error > 3%, fit isotonic regression
-        if max_cal_error > 0.03:
-            logger.info(
-                "Max calibration error %.3f > 0.03 — fitting isotonic calibrator.",
-                max_cal_error,
-            )
-            calibrator = IsotonicRegression(
-                y_min=0.01, y_max=0.99, out_of_bounds="clip"
-            )
-            calibrator.fit(all_p, all_y)
 
     # Feature importance
     importance = final_model.feature_importances_
@@ -563,7 +557,7 @@ def train_and_evaluate(
             importance[idx],
         )
 
-    return final_model, fold_results, calibrator
+    return final_model, fold_results
 
 
 # ---------------------------------------------------------------------------
@@ -581,11 +575,11 @@ def optuna_tune(
 ) -> dict:
     """Run Optuna TPE search to find optimal LightGBM hyperparameters.
 
-    Minimizes average Brier score across walk-forward CV folds.
+    Minimizes average RMSE across walk-forward CV folds.
 
     Args:
         features: Feature matrix, shape (N, NUM_FEATURES).
-        labels: Label array, shape (N,).
+        labels: Label array, shape (N,) — continuous returns (NaN = invalid).
         timestamps_ms: Timestamps, shape (N,).
         train_weeks: Training window in weeks.
         test_weeks: Test window in weeks.
@@ -618,9 +612,9 @@ def optuna_tune(
         test_valid = _get_valid_mask(features, labels, test_idx)
 
         X_tr = features[train_idx[train_valid]]
-        y_tr = labels[train_idx[train_valid]]
+        y_tr = labels[train_idx[train_valid]].astype(np.float64)
         X_te = features[test_idx[test_valid]]
-        y_te = labels[test_idx[test_valid]]
+        y_te = labels[test_idx[test_valid]].astype(np.float64)
 
         if len(X_tr) >= 100 and len(X_te) >= 100:
             fold_data.append((X_tr, y_tr, X_te, y_te))
@@ -636,19 +630,19 @@ def optuna_tune(
             max_depth=trial.suggest_int("max_depth", 3, 8),
             num_leaves=trial.suggest_int("num_leaves", 15, 63),
             learning_rate=trial.suggest_float("learning_rate", 0.01, 0.1, log=True),
-            min_child_samples=trial.suggest_int("min_child_samples", 50, 500),
+            min_child_samples=trial.suggest_int("min_child_samples", 20, 300),
             subsample=trial.suggest_float("subsample", 0.5, 1.0),
             colsample_bytree=trial.suggest_float("colsample_bytree", 0.5, 1.0),
-            reg_alpha=trial.suggest_float("reg_alpha", 0.001, 5.0, log=True),
-            reg_lambda=trial.suggest_float("reg_lambda", 0.001, 5.0, log=True),
+            reg_alpha=trial.suggest_float("reg_alpha", 0.001, 1.0, log=True),
+            reg_lambda=trial.suggest_float("reg_lambda", 0.001, 1.0, log=True),
             random_state=42,
             verbose=-1,
             n_jobs=-1,
         )
 
-        brier_scores = []
+        rmse_scores = []
         for fold_i, (X_tr, y_tr, X_te, y_te) in enumerate(fold_data):
-            model = lgb.LGBMClassifier(**params)
+            model = lgb.LGBMRegressor(**params)
 
             val_split = int(len(X_tr) * 0.9)
             model.fit(
@@ -658,16 +652,16 @@ def optuna_tune(
                 callbacks=[lgb.early_stopping(30, verbose=False)],
             )
 
-            y_pred = model.predict_proba(X_te)[:, 1]
-            brier = brier_score_loss(y_te, y_pred)
-            brier_scores.append(brier)
+            y_pred = model.predict(X_te)
+            rmse = float(np.sqrt(mean_squared_error(y_te, y_pred)))
+            rmse_scores.append(rmse)
 
             # Report intermediate value for pruning
-            trial.report(np.mean(brier_scores), fold_i)
+            trial.report(np.mean(rmse_scores), fold_i)
             if trial.should_prune():
                 raise optuna.TrialPruned()
 
-        return float(np.mean(brier_scores))
+        return float(np.mean(rmse_scores))
 
     study = optuna.create_study(
         direction="minimize",
@@ -679,7 +673,7 @@ def optuna_tune(
     best = study.best_trial
     logger.info("=" * 60)
     logger.info("OPTUNA BEST (trial %d):", best.number)
-    logger.info("  Avg Brier Score: %.4f", best.value)
+    logger.info("  Avg RMSE: %.6f", best.value)
     for k, v in best.params.items():
         logger.info("  %-20s = %s", k, v)
     logger.info("=" * 60)
@@ -695,8 +689,7 @@ def optuna_tune(
 
 
 def save_model(
-    model: lgb.LGBMClassifier,
-    calibrator: IsotonicRegression | None,
+    model: lgb.LGBMRegressor,
     fold_results: list[FoldResult],
     horizon_s: int,
     output_path: str,
@@ -709,25 +702,30 @@ def save_model(
 
     artifact = {
         "model": model,
-        "calibrator": calibrator,
+        "model_type": "regression",
         "feature_names": FEATURE_NAMES,
         "num_features": NUM_FEATURES,
         "horizon_s": horizon_s,
         "dead_zone": dead_zone,
-        "version": f"v3_h{horizon_s}",
+        "version": f"v4_reg_h{horizon_s}",
         "metrics": {
-            "avg_brier": float(np.mean([r.brier_score for r in fold_results])),
-            "avg_logloss": float(np.mean([r.log_loss_val for r in fold_results])),
-            "avg_accuracy": float(np.mean([r.accuracy for r in fold_results])),
-            "avg_auc": float(np.mean([r.auc_roc for r in fold_results])),
+            "avg_rmse": float(np.mean([r.rmse for r in fold_results])),
+            "avg_mae": float(np.mean([r.mae for r in fold_results])),
+            "avg_r2": float(np.mean([r.r2 for r in fold_results])),
+            "avg_direction_accuracy": float(
+                np.mean([r.direction_accuracy for r in fold_results])
+            ),
+            "avg_ic": float(np.mean([r.ic for r in fold_results])),
             "n_folds": len(fold_results),
         },
         "fold_results": [
             {
                 "fold": r.fold,
-                "brier": r.brier_score,
-                "accuracy": r.accuracy,
-                "auc": r.auc_roc,
+                "rmse": r.rmse,
+                "mae": r.mae,
+                "r2": r.r2,
+                "direction_accuracy": r.direction_accuracy,
+                "ic": r.ic,
                 "n_test": r.n_test,
             }
             for r in fold_results
@@ -774,21 +772,25 @@ async def run(args: argparse.Namespace) -> None:
     # Compute features
     features = compute_features_chunked(data)
 
-    # Generate labels
+    # Generate labels (regression mode: continuous returns)
     horizon_steps = args.horizon  # seconds = steps for 1s data
     dead_zone = args.dead_zone
-    labels, returns = generate_labels(data.closes, horizon_steps, dead_zone=dead_zone)
+    labels, returns = generate_labels(
+        data.closes, horizon_steps, dead_zone=dead_zone, mode="regression"
+    )
 
-    valid_labels = np.sum(labels >= 0)
+    valid_labels = np.sum(~np.isnan(labels))
     total_possible = max(len(labels) - horizon_steps, 1)
     excluded = total_possible - valid_labels
+    valid_returns = labels[~np.isnan(labels)]
     logger.info(
-        "Labels: %s valid (%s up = %.1f%%, %s down = %.1f%%)",
+        "Labels (regression): %s valid | mean=%.6f std=%.6f | "
+        "positive=%.1f%% negative=%.1f%%",
         f"{valid_labels:,}",
-        f"{np.sum(labels == 1):,}",
-        np.sum(labels == 1) / max(valid_labels, 1) * 100,
-        f"{np.sum(labels == 0):,}",
-        np.sum(labels == 0) / max(valid_labels, 1) * 100,
+        float(valid_returns.mean()) if len(valid_returns) > 0 else 0.0,
+        float(valid_returns.std()) if len(valid_returns) > 0 else 0.0,
+        (np.sum(valid_returns > 0) / max(len(valid_returns), 1)) * 100,
+        (np.sum(valid_returns < 0) / max(len(valid_returns), 1)) * 100,
     )
     if dead_zone > 0:
         logger.info(
@@ -813,7 +815,7 @@ async def run(args: argparse.Namespace) -> None:
         lgb_overrides = best_params
 
     # Train with walk-forward CV
-    model, fold_results, calibrator = train_and_evaluate(
+    model, fold_results = train_and_evaluate(
         features=features,
         labels=labels,
         timestamps_ms=data.timestamps_ms,
@@ -826,7 +828,6 @@ async def run(args: argparse.Namespace) -> None:
     # Save
     save_model(
         model,
-        calibrator,
         fold_results,
         args.horizon,
         args.output,
@@ -837,7 +838,7 @@ async def run(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Train LightGBM model for BTC direction prediction (v2).",
+        description="Train LightGBM regression model for BTC return prediction (v4).",
     )
     parser.add_argument(
         "--horizon",
@@ -860,10 +861,10 @@ def main() -> None:
     parser.add_argument(
         "--dead-zone",
         type=float,
-        default=0.001,
+        default=0.003,
         help="Dead-zone threshold for label filtering. "
         "Samples with |return| <= dead_zone are excluded. "
-        "Set to 0 to disable. Default: 0.001",
+        "Set to 0 to disable. Default: 0.003",
     )
     parser.add_argument(
         "--optuna",
@@ -884,8 +885,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--output",
-        default="models/btc_5m_v3.pkl",
-        help="Output model path. Default: models/btc_5m_v3.pkl",
+        default="models/btc_5m_v4_reg.pkl",
+        help="Output model path. Default: models/btc_5m_v4_reg.pkl",
     )
     args = parser.parse_args()
 

@@ -309,6 +309,7 @@ class Bot:
                     feature_window=self._cfg.ml.feature_window,
                     prediction_interval=self._cfg.ml.prediction_interval,
                     min_confidence=self._cfg.ml.min_confidence,
+                    min_predicted_return=self._cfg.ml.min_predicted_return,
                     max_predicted_return=self._cfg.ml.max_predicted_return,
                     horizon_s=self._cfg.ml.horizon_s,
                 )

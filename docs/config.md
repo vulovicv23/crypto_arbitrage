@@ -95,6 +95,7 @@ Risk management parameters.
 | `trend_size_multiplier` | `TREND_SIZE_MULTIPLIER` | 1.0 | Size multiplier in trending-down markets |
 | `trending_up_size_multiplier` | `TRENDING_UP_SIZE_MULTIPLIER` | 0.5 | Size multiplier in trending-up markets (reduced — ML underperforms in uptrends) |
 | `moderate_strength_multiplier` | `MODERATE_STRENGTH_MULTIPLIER` | 0.4 | Size multiplier for MODERATE strength signals (data shows worst-performing class) |
+| `weak_strength_multiplier` | `WEAK_STRENGTH_MULTIPLIER` | 0.5 | Size multiplier for WEAK strength signals (0 = skip WEAK trades entirely) |
 
 ## ExecutionConfig
 
@@ -138,9 +139,11 @@ ML prediction pipeline (optional, disabled by default).
 |-----------|---------|---------|-------------|
 | `enabled` | `ML_ENABLED` | false | Enable ML prediction pipeline |
 | `model_path` | `ML_MODEL_PATH` | `models/btc_5m_v3.pkl` | Path to trained .pkl artifact |
+| `model_type` | `ML_MODEL_TYPE` | `"regression"` | Model type: `"regression"` (v4+) or `"classification"` (v3) |
 | `feature_window` | `ML_FEATURE_WINDOW` | 4000 | Rolling buffer size (seconds) |
 | `prediction_interval` | `ML_PREDICTION_INTERVAL` | 0.25 | Prediction emit interval (seconds) |
-| `min_confidence` | `ML_MIN_CONFIDENCE` | 0.1 | Minimum confidence to emit signal |
+| `min_confidence` | `ML_MIN_CONFIDENCE` | 0.1 | Minimum confidence to emit signal (classification only) |
+| `min_predicted_return` | `ML_MIN_PREDICTED_RETURN` | 0.0001 | Minimum absolute predicted return to emit signal (regression noise gate) |
 | `max_predicted_return` | `ML_MAX_PREDICTED_RETURN` | 0.01 (1%) | Cap on predicted price magnitude |
 | `horizon_s` | `ML_HORIZON_S` | 300 (5 min) | Prediction horizon matching training labels |
 
@@ -155,4 +158,4 @@ ML prediction pipeline (optional, disabled by default).
 | **Risk** | All percentage params in `(0, 1)`, `max_open_positions ≥ 1`, `cooldown_after_losses ≥ 1`, `cooldown_duration_s > 0` |
 | **Execution** | `max_latency_ms > 0`, `max_orders_per_second ≥ 1` |
 | **Fees** | `taker_fee_pct ∈ [0, 1)`, `maker_fee_pct ∈ [0, 1)` |
-| **ML** | When enabled: `feature_window ≥ 100`, `prediction_interval > 0`, `min_confidence ∈ [0, 1]` |
+| **ML** | When enabled: `feature_window ≥ 100`, `prediction_interval > 0`, `min_confidence ∈ [0, 1]`, `model_type ∈ {classification, regression}`, `min_predicted_return ≥ 0` |

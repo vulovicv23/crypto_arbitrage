@@ -217,6 +217,10 @@ class RiskConfig:
     moderate_strength_multiplier: float = float(
         os.getenv("MODERATE_STRENGTH_MULTIPLIER", "0.4")
     )
+    # Strength multiplier for WEAK signals (0 = skip WEAK trades entirely).
+    weak_strength_multiplier: float = float(
+        os.getenv("WEAK_STRENGTH_MULTIPLIER", "0.5")
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -285,12 +289,21 @@ class MLConfig:
     enabled: bool = os.getenv("ML_ENABLED", "false").lower() in ("true", "1", "yes")
     # Path to the trained model artifact (.pkl).
     model_path: str = os.getenv("ML_MODEL_PATH", "models/btc_5m_v3.pkl")
+    # Model type: "regression" (predict continuous returns) or "classification"
+    # (predict binary direction). Regression is preferred — classification
+    # destroys signal magnitude. Auto-detected from artifact at runtime;
+    # this is only used for validation.
+    model_type: str = os.getenv("ML_MODEL_TYPE", "regression")
     # Rolling buffer size for the feature engine (seconds of history).
     feature_window: int = int(os.getenv("ML_FEATURE_WINDOW", "4000"))
     # How often to emit ML predictions (seconds).
     prediction_interval: float = float(os.getenv("ML_PREDICTION_INTERVAL", "0.25"))
     # Minimum confidence to emit a prediction (filters noise).
+    # Used by classification models only.
     min_confidence: float = float(os.getenv("ML_MIN_CONFIDENCE", "0.1"))
+    # Minimum absolute predicted return to emit a prediction.
+    # Used by regression models — replaces min_confidence gating.
+    min_predicted_return: float = float(os.getenv("ML_MIN_PREDICTED_RETURN", "0.0001"))
     # Maximum predicted return magnitude (caps extreme predictions).
     max_predicted_return: float = float(os.getenv("ML_MAX_PREDICTED_RETURN", "0.01"))
     # Prediction horizon in seconds (must match training labels).
@@ -367,6 +380,8 @@ def _validate(cfg: AppConfig) -> None:
         raise ValueError("MAX_TOTAL_EXPOSURE_PCT must be between 0 and 1")
     if r.max_open_positions < 1:
         raise ValueError("MAX_OPEN_POSITIONS must be at least 1")
+    if not 0 <= r.weak_strength_multiplier <= 1:
+        raise ValueError("WEAK_STRENGTH_MULTIPLIER must be between 0 and 1")
     if r.cooldown_after_losses < 1:
         raise ValueError("COOLDOWN_AFTER_LOSSES must be at least 1")
     if r.cooldown_duration_s <= 0:
@@ -388,6 +403,13 @@ def _validate(cfg: AppConfig) -> None:
 
     # ML config
     m = cfg.ml
+    if m.model_type not in ("classification", "regression"):
+        raise ValueError(
+            "ML_MODEL_TYPE must be 'classification' or 'regression', "
+            f"got '{m.model_type}'"
+        )
+    if m.min_predicted_return < 0:
+        raise ValueError("ML_MIN_PREDICTED_RETURN must be >= 0")
     if m.enabled:
         if m.feature_window < 100:
             raise ValueError("ML_FEATURE_WINDOW must be at least 100")

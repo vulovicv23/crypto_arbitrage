@@ -810,3 +810,101 @@ class TestSetMarketContexts:
         )
         assert engine._token_to_market[ctx.yes_token_id] is ctx
         assert engine._token_to_market[ctx.no_token_id] is ctx
+
+
+# ---------------------------------------------------------------------------
+# Regression Compatibility Tests
+# ---------------------------------------------------------------------------
+
+
+class TestRegressionCompatibility:
+    """Tests verifying that regression models (confidence=1.0) work correctly
+    through the strategy pipeline.
+
+    With regression, the MLPredictor sets confidence=1.0 so:
+    - z *= confidence is a no-op (pure z-score)
+    - Risk manager's confidence_mult = 1.0 (no dampening)
+    The return magnitude flows through naturally via predicted_price.
+    """
+
+    def test_confidence_one_no_dampening(self):
+        """confidence=1.0 should give undampened z-score (same as full confidence)."""
+        engine, _, _ = _make_engine()
+        ctx = _make_market_context(seconds_from_now=300)
+
+        # Regression-style prediction: confidence=1.0
+        pred_reg = _make_prediction(
+            current_price=100_000,
+            predicted_price=100_500,
+            confidence=1.0,
+        )
+
+        p_up_reg = engine._compute_p_up(pred_reg, ctx, btc_volatility=0.0001)
+
+        # Verify it's above 0.5 and NOT dampened toward 0.5
+        assert p_up_reg > 0.5
+
+        # Compare with confidence=0.5 to verify dampening is absent at 1.0
+        pred_half = _make_prediction(
+            current_price=100_000,
+            predicted_price=100_500,
+            confidence=0.5,
+        )
+        p_up_half = engine._compute_p_up(pred_half, ctx, btc_volatility=0.0001)
+
+        # confidence=1.0 should produce P(up) further from 0.5 than 0.5
+        assert abs(p_up_reg - 0.5) > abs(p_up_half - 0.5)
+
+    def test_regression_signal_generation(self):
+        """Full pipeline should generate signals with confidence=1.0.
+
+        This mirrors how regression models emit predictions: the return
+        magnitude determines predicted_price, confidence is always 1.0.
+        """
+        engine, _, _ = _make_engine()
+        ctx = _make_market_context(seconds_from_now=300)
+
+        engine.set_market_contexts(
+            {
+                ctx.yes_token_id: ctx,
+                ctx.no_token_id: ctx,
+            }
+        )
+
+        # Set up books — YES underpriced at 0.40
+        yes_book = _make_book(
+            token_id=ctx.yes_token_id,
+            condition_id=ctx.condition_id,
+            mid_price=0.40,
+        )
+        no_book = _make_book(
+            token_id=ctx.no_token_id,
+            condition_id=ctx.condition_id,
+            mid_price=0.60,
+        )
+        engine._books[ctx.yes_token_id] = yes_book
+        engine._books[ctx.no_token_id] = no_book
+
+        # Inject BTC price history for volatility estimation
+        np.random.seed(42)
+        base = 100_000.0
+        for i in range(50):
+            noise = np.random.normal(0, base * 0.0001)
+            engine._btc_price_history.append(base + noise)
+
+        # Regression-style prediction: moderate return, confidence=1.0
+        pred = _make_prediction(
+            current_price=100_000,
+            predicted_price=100_100,  # +0.1% return
+            confidence=1.0,
+        )
+
+        signals = engine._evaluate(pred)
+
+        # Should produce a BUY YES signal (P(up) > 0.5, YES underpriced)
+        yes_signals = [s for s in signals if s.token_id == ctx.yes_token_id]
+        assert len(yes_signals) >= 1
+        assert yes_signals[0].side.value == "BUY"
+        assert yes_signals[0].edge > 0
+        # Confidence in the signal's prediction should be 1.0
+        assert yes_signals[0].prediction.confidence == 1.0

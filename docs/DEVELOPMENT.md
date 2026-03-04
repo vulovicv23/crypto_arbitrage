@@ -629,20 +629,20 @@ Data is stored in the `btc_klines` table (~31.5M rows/year). The collector uses 
 
 ### Model Training
 
-Train a LightGBM classifier with walk-forward cross-validation:
+Train a LightGBM regression model with walk-forward cross-validation:
 
 ```bash
-# Basic training (5m horizon)
-python tools/train_model.py --horizon 300 --output models/btc_5m_v2.pkl
+# Basic training (5m horizon, regression)
+python tools/train_model.py --horizon 300 --output models/btc_5m_v4_reg.pkl
 
 # With Optuna HPO
 python tools/train_model.py --horizon 300 --optuna --optuna-trials 50
 
 # Custom date range and dead zone
-python tools/train_model.py --horizon 300 --dead-zone 0.001 --start 2025-09-01 --end 2026-02-28
+python tools/train_model.py --horizon 300 --dead-zone 0.003 --start 2025-09-01 --end 2026-02-28
 ```
 
-Output: `.pkl` artifact containing `model`, `calibrator`, `feature_names`, `num_features`, `horizon_s`, `metrics`. Metrics include accuracy, AUC-ROC, Brier score, log loss.
+Output: `.pkl` artifact containing `model`, `model_type` (`"regression"`), `feature_names`, `num_features`, `horizon_s`, `metrics`. Regression metrics include RMSE, MAE, R², direction accuracy, IC (Pearson correlation).
 
 ### Backtesting
 
@@ -659,7 +659,7 @@ python tools/backtest.py --no-ml --start 2026-01-01 --end 2026-02-28
 python tools/backtest.py --model models/btc_5m_v2.pkl --capital 10000
 ```
 
-The backtester replays klines, feeds them through the feature engine and ML inference, generates synthetic order books, runs the strategy/risk pipeline, and resolves positions at 5m boundaries. Reports total PnL, win rate, Sharpe ratio, max drawdown.
+The backtester replays klines, feeds them through the feature engine and ML inference, generates synthetic order books, runs the strategy/risk pipeline, and resolves positions at 5m boundaries. Auto-detects model type (regression/classification) from the artifact. Reports total PnL, win rate, Sharpe ratio, max drawdown, plus regression-specific metrics (RMSE, direction accuracy) when applicable.
 
 ---
 

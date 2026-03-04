@@ -100,16 +100,19 @@ class BacktestMetrics:
     total_volume: float = 0.0
     max_drawdown: float = 0.0
     peak_pnl: float = 0.0
-    brier_sum: float = 0.0  # for Brier score
+    brier_sum: float = 0.0  # for Brier score (classification)
     brier_count: int = 0
     hourly_pnl: dict = field(default_factory=lambda: {h: 0.0 for h in range(24)})
     hourly_trades: dict = field(default_factory=lambda: {h: 0 for h in range(24)})
-    # Calibration by decile
+    # Calibration by decile (classification)
     calib_buckets: list = field(
         default_factory=lambda: [
             {"pred_sum": 0.0, "actual_sum": 0.0, "count": 0} for _ in range(10)
         ]
     )
+    # Regression tracking
+    pred_returns: list = field(default_factory=list)
+    actual_returns: list = field(default_factory=list)
 
     @property
     def win_rate(self) -> float:
@@ -118,6 +121,24 @@ class BacktestMetrics:
     @property
     def brier_score(self) -> float:
         return self.brier_sum / self.brier_count if self.brier_count > 0 else 1.0
+
+    @property
+    def regression_rmse(self) -> float:
+        """RMSE of predicted vs actual returns."""
+        if not self.pred_returns:
+            return float("nan")
+        p = np.array(self.pred_returns)
+        a = np.array(self.actual_returns)
+        return float(np.sqrt(np.mean((p - a) ** 2)))
+
+    @property
+    def regression_direction_accuracy(self) -> float:
+        """Fraction of predictions with correct sign."""
+        if not self.pred_returns:
+            return 0.0
+        p = np.array(self.pred_returns)
+        a = np.array(self.actual_returns)
+        return float(np.mean(np.sign(p) == np.sign(a)))
 
     def record_trade(self, pnl: float, volume: float, hour: int) -> None:
         self.total_trades += 1
@@ -137,7 +158,7 @@ class BacktestMetrics:
             self.max_drawdown = dd
 
     def record_prediction(self, p_up: float, actual_up: bool) -> None:
-        """Track Brier score and calibration."""
+        """Track Brier score and calibration (classification mode)."""
         actual = 1.0 if actual_up else 0.0
         self.brier_sum += (p_up - actual) ** 2
         self.brier_count += 1
@@ -146,6 +167,13 @@ class BacktestMetrics:
         self.calib_buckets[bucket_idx]["pred_sum"] += p_up
         self.calib_buckets[bucket_idx]["actual_sum"] += actual
         self.calib_buckets[bucket_idx]["count"] += 1
+
+    def record_regression_prediction(
+        self, pred_return: float, actual_return: float
+    ) -> None:
+        """Track predicted vs actual return (regression mode)."""
+        self.pred_returns.append(pred_return)
+        self.actual_returns.append(actual_return)
 
 
 # ---------------------------------------------------------------------------
@@ -211,18 +239,25 @@ def batch_ml_predict(
     data: KlineData,
     model_artifact: dict,
     chunk_size: int = 2_000_000,
-) -> np.ndarray:
+) -> tuple[np.ndarray, str]:
     """Run batch ML inference on all klines.
 
-    Returns p_up array (shape N,) with NaN for rows without enough lookback.
+    Auto-detects model type from artifact:
+      - regression: returns raw predicted returns
+      - classification: returns P(up) probabilities
+
+    Returns:
+        (predictions, model_type) — predictions shape (N,), NaN where lookback
+        is insufficient.
     """
     from src.ml.features import compute_batch, _MIN_TICKS
 
     model = model_artifact["model"]
-    calibrator = model_artifact.get("calibrator")
+    model_type = model_artifact.get("model_type", "classification")
+    calibrator = model_artifact.get("calibrator") if model_type == "classification" else None
     n = len(data.timestamps_ms)
 
-    p_up = np.full(n, np.nan, dtype=np.float64)
+    preds = np.full(n, np.nan, dtype=np.float64)
 
     # Process in chunks (with lookback overlap so features at chunk boundaries
     # have enough history).  We always include `lookback` extra rows before the
@@ -235,7 +270,6 @@ def batch_ml_predict(
         chunk_start = max(0, processed - lookback)
         chunk_end = min(n, processed + chunk_size)
         sl = slice(chunk_start, chunk_end)
-        chunk_len = chunk_end - chunk_start
 
         # Compute features for this chunk
         features = compute_batch(
@@ -256,11 +290,13 @@ def batch_ml_predict(
         valid_mask = ~np.isnan(features[:, 0])
         if valid_mask.any():
             valid_features = features[valid_mask]
-            probs = model.predict_proba(valid_features)[:, 1]
 
-            # Apply calibration if available
-            if calibrator is not None:
-                probs = calibrator.predict(probs)
+            if model_type == "regression":
+                chunk_preds = model.predict(valid_features)
+            else:
+                chunk_preds = model.predict_proba(valid_features)[:, 1]
+                if calibrator is not None:
+                    chunk_preds = calibrator.predict(chunk_preds)
 
             # Map chunk-local valid indices → global indices
             local_valid_idx = np.where(valid_mask)[0]  # indices within chunk
@@ -271,11 +307,11 @@ def batch_ml_predict(
             # Only write results for rows in the "new" region (>= processed)
             # to avoid redundant writes on the lookback overlap.
             new_mask = global_valid_idx >= processed
-            p_up[global_valid_idx[new_mask]] = probs[new_mask]
+            preds[global_valid_idx[new_mask]] = chunk_preds[new_mask]
 
         processed = chunk_end
 
-    return p_up
+    return preds, model_type
 
 
 # ---------------------------------------------------------------------------
@@ -452,12 +488,16 @@ def run_backtest(
     slippage_pct: float = 0.005,
     cooldown_ticks: int = 30,
     seed: int = 42,
+    model_type: str = "classification",
+    max_predicted_return: float = 0.01,
 ) -> tuple[BacktestMetrics, list[BacktestTrade]]:
     """Run the full backtest.
 
     Args:
         data: Historical kline data (1s resolution).
-        p_up_array: ML-predicted P(up) for each tick (NaN = no prediction).
+        p_up_array: ML predictions for each tick (NaN = no prediction).
+            For classification: P(up) probabilities.
+            For regression: raw predicted returns.
         capital: Starting capital in USDC.
         market_window_s: Simulated market duration (5m = 300s).
         min_edge / max_edge / max_spread: Strategy thresholds.
@@ -608,18 +648,31 @@ def run_backtest(
                 continue
 
         # ── Skip if no ML prediction or no vol ─────────────────────────
-        p_up_val = p_up_array[i]
-        if np.isnan(p_up_val):
-            # No ML prediction: use flat 0.50 (mimics non-ML baseline)
-            p_up_val = 0.5
+        raw_pred = p_up_array[i]
+        if np.isnan(raw_pred):
+            if model_type == "regression":
+                continue  # no prediction available
+            else:
+                raw_pred = 0.5  # flat baseline for classification
 
         vol = rolling_vol[i]
         if np.isnan(vol) or vol <= 0:
             continue
 
         # ── Compute strategy P(up) from ML prediction ──────────────────
-        predicted_return = (p_up_val - 0.5) * 2 * 0.01  # max_predicted_return=0.01
-        confidence = abs(p_up_val - 0.5) * 2
+        if model_type == "regression":
+            # Regression: raw_pred IS the predicted return
+            predicted_return = max(
+                -max_predicted_return,
+                min(raw_pred, max_predicted_return),
+            )
+            confidence = 1.0  # no triple-counting
+            p_up_val = 0.5 + predicted_return / (2.0 * max_predicted_return)  # for tracking
+        else:
+            # Classification: raw_pred is P(up)
+            p_up_val = raw_pred
+            predicted_return = (p_up_val - 0.5) * 2 * max_predicted_return
+            confidence = abs(p_up_val - 0.5) * 2
         seconds_remaining = max(1, market_window_s - ticks_in_market)
 
         strategy_p_up = compute_p_up(
@@ -949,6 +1002,7 @@ def main() -> None:
 
     # ML predictions
     use_ml = not args.no_ml
+    model_type = "classification"  # default for no-ML baseline
     if use_ml:
         model_path = Path(args.model)
         if not model_path.exists():
@@ -957,32 +1011,40 @@ def main() -> None:
 
         print(f"Loading model from {model_path}...")
         artifact = joblib.load(model_path)
+        model_type = artifact.get("model_type", "classification")
         model_metrics = artifact.get("metrics", {})
         print(f"  Model version: {artifact.get('version', '?')}")
-        print(f"  Training Brier: {model_metrics.get('avg_brier', '?')}")
-        print(f"  Training AUC:   {model_metrics.get('avg_auc', '?')}")
+        print(f"  Model type:    {model_type}")
+        if model_type == "regression":
+            print(f"  Training RMSE:  {model_metrics.get('avg_rmse', '?')}")
+            print(f"  Training R²:    {model_metrics.get('avg_r2', '?')}")
+            print(f"  Training IC:    {model_metrics.get('avg_ic', '?')}")
+        else:
+            print(f"  Training Brier: {model_metrics.get('avg_brier', '?')}")
+            print(f"  Training AUC:   {model_metrics.get('avg_auc', '?')}")
 
         print("Running batch ML inference...")
         t1 = time.time()
-        p_up_array = batch_ml_predict(data, artifact)
-        valid = (~np.isnan(p_up_array)).sum()
+        pred_array, model_type = batch_ml_predict(data, artifact)
+        valid = (~np.isnan(pred_array)).sum()
         print(f"ML inference done: {valid:,} predictions in {time.time() - t1:.1f}s")
     else:
         print("No-ML mode: using flat P(up) = 0.50 for all ticks")
-        p_up_array = np.full(len(data.timestamps_ms), 0.5)
+        pred_array = np.full(len(data.timestamps_ms), 0.5)
 
     # Run backtest
     print("\nRunning backtest...")
     t2 = time.time()
     metrics, trades = run_backtest(
         data,
-        p_up_array,
+        pred_array,
         capital=args.capital,
         market_window_s=args.market_window,
         min_edge=args.min_edge,
         max_edge=args.max_edge,
         max_spread=args.max_spread,
         seed=args.seed,
+        model_type=model_type,
     )
     bt_duration = time.time() - t2
 

@@ -169,7 +169,7 @@ class RiskManager:
 
         # Strength multiplier
         strength_map = {
-            SignalStrength.WEAK: 0.5,
+            SignalStrength.WEAK: self._cfg.weak_strength_multiplier,
             SignalStrength.MODERATE: self._cfg.moderate_strength_multiplier,
             SignalStrength.STRONG: 1.0,
         }
