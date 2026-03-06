@@ -1,0 +1,54 @@
+{
+  "v5_ml_optimized": {
+    "description": "Scenario D: skip WEAK, crush TRENDING_UP (0.2x), boost TRENDING_DOWN (1.3x), bigger base size (0.8%)",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_5m_v3.pkl",
+      "ML_FEATURE_WINDOW": "4000",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "ML_MIN_CONFIDENCE": "0.60",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.008",
+      "EXPIRY_BUCKETS_ENABLED": "true",
+      "NEAR_EXPIRY_S": "120",
+      "FAR_EXPIRY_S": "600",
+      "NEAR_MIN_EDGE": "0.03",
+      "NEAR_MAX_EDGE": "0.40",
+      "NEAR_SIZE_MULT": "1.2",
+      "FAR_MIN_EDGE": "0.03",
+      "FAR_MAX_EDGE": "0.25",
+      "FAR_SIZE_MULT": "0.8",
+      "TRENDING_UP_SIZE_MULTIPLIER": "0.2",
+      "TREND_SIZE_MULTIPLIER": "1.3",
+      "WEAK_STRENGTH_MULTIPLIER": "0",
+      "MODERATE_STRENGTH_MULTIPLIER": "0.4"
+    }
+  },
+  "v5_ml_aggressive": {
+    "description": "Scenario G: harder TRENDING_UP cut (0.15x), bigger TRENDING_DOWN boost (1.5x), skip WEAK",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_5m_v3.pkl",
+      "ML_FEATURE_WINDOW": "4000",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "ML_MIN_CONFIDENCE": "0.60",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.008",
+      "EXPIRY_BUCKETS_ENABLED": "true",
+      "NEAR_EXPIRY_S": "120",
+      "FAR_EXPIRY_S": "600",
+      "NEAR_MIN_EDGE": "0.03",
+      "NEAR_MAX_EDGE": "0.40",
+      "NEAR_SIZE_MULT": "1.2",
+      "FAR_MIN_EDGE": "0.03",
+      "FAR_MAX_EDGE": "0.25",
+      "FAR_SIZE_MULT": "0.8",
+      "TRENDING_UP_SIZE_MULTIPLIER": "0.15",
+      "TREND_SIZE_MULTIPLIER": "1.5",
+      "WEAK_STRENGTH_MULTIPLIER": "0",
+      "MODERATE_STRENGTH_MULTIPLIER": "0.4"
+    }
+  }
+}

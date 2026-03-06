@@ -649,7 +649,9 @@ class ReportGenerator:
                 f"{total_snapshots} open at shutdown "
                 f"(from {total_entries} entries)"
             )
-            print("  Only natural resolutions counted in PnL, WR%, Sharpe, and scoring.")
+            print(
+                "  Only natural resolutions counted in PnL, WR%, Sharpe, and scoring."
+            )
 
         if ranked and ranked[0].total_trades > 0:
             print(f"\n  🏆 Best profile: {ranked[0].profile_name}")
@@ -714,11 +716,7 @@ class ReportGenerator:
         for i, r in enumerate(ranked, 1):
             pf = f"{r.profit_factor:.1f}" if r.profit_factor < 1000 else "∞"
             natural = r.natural_resolved_count
-            wr = (
-                f"{r.real_win_rate * 100:.0f}% ({natural})"
-                if natural > 0
-                else "—"
-            )
+            wr = f"{r.real_win_rate * 100:.0f}% ({natural})" if natural > 0 else "—"
             fees = f"${r.total_fees:.2f}" if r.total_fees > 0 else "—"
             lines.append(
                 f"| #{i} | {r.profile_name} | {r.total_trades} "
@@ -768,8 +766,7 @@ class ReportGenerator:
                 )
                 if r.unresolved_count > 0:
                     lines.append(
-                        f"- **Unresolved:** {r.unresolved_count} "
-                        "(excluded from PnL)"
+                        f"- **Unresolved:** {r.unresolved_count} " "(excluded from PnL)"
                     )
             if r.snapshot_count > 0:
                 lines.append(
@@ -1067,9 +1064,7 @@ class MatrixOrchestrator:
 
                 snapshot = {
                     "timestamp": datetime.now().isoformat(),
-                    "elapsed_hours": (
-                        (time.monotonic() - self._run_start) / 3600
-                    ),
+                    "elapsed_hours": ((time.monotonic() - self._run_start) / 3600),
                     "profiles": {},
                 }
                 for name, r in results.items():
@@ -1099,9 +1094,7 @@ class MatrixOrchestrator:
         """Wait for all processes to finish, with watchdog and auto-restart."""
         deadline = time.monotonic() + self._duration_s + self._GRACE_PERIOD_S
         restart_counts: dict[str, int] = {name: 0 for name in processes}
-        start_times: dict[str, float] = {
-            name: time.monotonic() for name in processes
-        }
+        start_times: dict[str, float] = {name: time.monotonic() for name in processes}
 
         logger.info(
             "All %d processes running. Waiting up to %ds + %ds grace...",
@@ -1150,9 +1143,7 @@ class MatrixOrchestrator:
                                 logger.warning("  stderr: %s", line)
 
                         # Respawn with remaining duration
-                        profile = next(
-                            p for p in self._profiles if p.name == name
-                        )
+                        profile = next(p for p in self._profiles if p.name == name)
                         profile_dir = self._run_dir / name
                         proc_new = self._spawn_process_with_duration(
                             profile, profile_dir, int(remaining)

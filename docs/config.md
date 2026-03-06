@@ -96,6 +96,7 @@ Risk management parameters.
 | `trending_up_size_multiplier` | `TRENDING_UP_SIZE_MULTIPLIER` | 0.5 | Size multiplier in trending-up markets (reduced — ML underperforms in uptrends) |
 | `moderate_strength_multiplier` | `MODERATE_STRENGTH_MULTIPLIER` | 0.4 | Size multiplier for MODERATE strength signals (data shows worst-performing class) |
 | `weak_strength_multiplier` | `WEAK_STRENGTH_MULTIPLIER` | 0.5 | Size multiplier for WEAK strength signals (0 = skip WEAK trades entirely) |
+| `max_positions_per_condition` | `MAX_POSITIONS_PER_CONDITION` | 1 | Max positions per condition_id (0 = unlimited, legacy behavior) |
 
 ## ExecutionConfig
 

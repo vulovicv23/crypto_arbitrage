@@ -221,6 +221,11 @@ class RiskConfig:
     weak_strength_multiplier: float = float(
         os.getenv("WEAK_STRENGTH_MULTIPLIER", "0.5")
     )
+    # Maximum positions per condition_id (prevents stacking bets on same market).
+    # 0 = unlimited (legacy behavior).
+    max_positions_per_condition: int = int(
+        os.getenv("MAX_POSITIONS_PER_CONDITION", "1")
+    )
 
 
 # ---------------------------------------------------------------------------

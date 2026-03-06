@@ -1,0 +1,101 @@
+{
+  "v6_regression_base": {
+    "description": "v6 regression baseline: default settings with new regression model, confidence=1.0 (no dampening)",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_5m_v4_reg.pkl",
+      "ML_MODEL_TYPE": "regression",
+      "ML_MIN_PREDICTED_RETURN": "0.0001",
+      "ML_FEATURE_WINDOW": "4000",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.005",
+      "TRENDING_UP_SIZE_MULTIPLIER": "0.5",
+      "TREND_SIZE_MULTIPLIER": "1.0",
+      "WEAK_STRENGTH_MULTIPLIER": "0.5",
+      "MODERATE_STRENGTH_MULTIPLIER": "0.4"
+    }
+  },
+  "v6_regression_optimized": {
+    "description": "v6 regression optimized: skip WEAK, reduce TRENDING_UP, boost base size",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_5m_v4_reg.pkl",
+      "ML_MODEL_TYPE": "regression",
+      "ML_MIN_PREDICTED_RETURN": "0.0001",
+      "ML_FEATURE_WINDOW": "4000",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.008",
+      "EXPIRY_BUCKETS_ENABLED": "true",
+      "NEAR_EXPIRY_S": "120",
+      "FAR_EXPIRY_S": "600",
+      "NEAR_MIN_EDGE": "0.03",
+      "NEAR_MAX_EDGE": "0.40",
+      "NEAR_SIZE_MULT": "1.2",
+      "FAR_MIN_EDGE": "0.03",
+      "FAR_MAX_EDGE": "0.25",
+      "FAR_SIZE_MULT": "0.8",
+      "TRENDING_UP_SIZE_MULTIPLIER": "0.2",
+      "TREND_SIZE_MULTIPLIER": "1.3",
+      "WEAK_STRENGTH_MULTIPLIER": "0",
+      "MODERATE_STRENGTH_MULTIPLIER": "0.4"
+    }
+  },
+  "v6_regression_aggressive": {
+    "description": "v6 regression aggressive: tighter noise gate, harder regime cuts, skip WEAK, bigger positions",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_5m_v4_reg.pkl",
+      "ML_MODEL_TYPE": "regression",
+      "ML_MIN_PREDICTED_RETURN": "0.0003",
+      "ML_FEATURE_WINDOW": "4000",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "MIN_EDGE_THRESHOLD": "0.015",
+      "MAX_EDGE_THRESHOLD": "0.35",
+      "MAX_POSITION_PCT": "0.01",
+      "EXPIRY_BUCKETS_ENABLED": "true",
+      "NEAR_EXPIRY_S": "120",
+      "FAR_EXPIRY_S": "600",
+      "NEAR_MIN_EDGE": "0.025",
+      "NEAR_MAX_EDGE": "0.40",
+      "NEAR_SIZE_MULT": "1.3",
+      "FAR_MIN_EDGE": "0.03",
+      "FAR_MAX_EDGE": "0.25",
+      "FAR_SIZE_MULT": "0.7",
+      "TRENDING_UP_SIZE_MULTIPLIER": "0.15",
+      "TREND_SIZE_MULTIPLIER": "1.5",
+      "WEAK_STRENGTH_MULTIPLIER": "0",
+      "MODERATE_STRENGTH_MULTIPLIER": "0.4"
+    }
+  },
+  "v5_classification_control": {
+    "description": "v5 classification control group: old v3 model for A/B comparison against regression",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_5m_v3.pkl",
+      "ML_MODEL_TYPE": "classification",
+      "ML_MIN_CONFIDENCE": "0.60",
+      "ML_FEATURE_WINDOW": "4000",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.008",
+      "EXPIRY_BUCKETS_ENABLED": "true",
+      "NEAR_EXPIRY_S": "120",
+      "FAR_EXPIRY_S": "600",
+      "NEAR_MIN_EDGE": "0.03",
+      "NEAR_MAX_EDGE": "0.40",
+      "NEAR_SIZE_MULT": "1.2",
+      "FAR_MIN_EDGE": "0.03",
+      "FAR_MAX_EDGE": "0.25",
+      "FAR_SIZE_MULT": "0.8",
+      "TRENDING_UP_SIZE_MULTIPLIER": "0.2",
+      "TREND_SIZE_MULTIPLIER": "1.3",
+      "WEAK_STRENGTH_MULTIPLIER": "0",
+      "MODERATE_STRENGTH_MULTIPLIER": "0.4"
+    }
+  }
+}

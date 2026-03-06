@@ -54,18 +54,23 @@ GAMMA_PAGE_SIZE = 500  # Max per request
 UP_OR_DOWN = "up or down"
 
 # Slug patterns for supported timeframes
+# Machine-format:  btc-updown-5m-1772787600
+# Human 1h:        bitcoin-up-or-down-march-6-4am-et
+# Human daily:     bitcoin-up-or-down-on-march-6
 TIMEFRAME_PATTERNS: dict[re.Pattern, str] = {
     re.compile(r"-updown-5m-"): "5m",
     re.compile(r"-updown-15m-"): "15m",
     re.compile(r"-updown-1h-"): "1h",
     re.compile(r"-updown-4h-"): "4h",
+    re.compile(r"-up-or-down-\w+-\d+-\d+[ap]m-et$"): "1h",
+    re.compile(r"-up-or-down-on-\w+-\d+$"): "1d",
 }
 
 # Asset extraction from slug: "btc-updown-5m-1234567890" → "BTC"
 _ASSET_SLUG_PATTERN = re.compile(r"^([a-z]+)-updown-\d+[mh]-\d+$")
 
 # Timeframe → resolution in seconds (for predictive scheduling)
-_TF_SECONDS = {"5m": 300, "15m": 900, "1h": 3600, "4h": 14400}
+_TF_SECONDS = {"5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400}
 
 
 class Timeframe(str, Enum):
@@ -75,6 +80,7 @@ class Timeframe(str, Enum):
     M15 = "15m"
     H1 = "1h"
     H4 = "4h"
+    D1 = "1d"
 
     @property
     def resolution_seconds(self) -> int:
@@ -83,7 +89,7 @@ class Timeframe(str, Enum):
     @property
     def sizing_multiplier(self) -> float:
         """Shorter timeframes get smaller bets due to higher noise."""
-        return {"5m": 0.50, "15m": 1.00, "1h": 1.25, "4h": 1.50}[self.value]
+        return {"5m": 0.50, "15m": 1.00, "1h": 1.25, "4h": 1.50, "1d": 2.00}[self.value]
 
 
 # ---------------------------------------------------------------------------

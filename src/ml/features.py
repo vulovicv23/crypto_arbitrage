@@ -778,9 +778,7 @@ class FeatureEngine:
             h = np.append(h, self._bar_high)
             l = np.append(l, self._bar_low)
             volumes = np.append(volumes, self._bar_volume)
-            timestamps_ms = np.append(
-                timestamps_ms, self._bar_ts_s * 1_000
-            )
+            timestamps_ms = np.append(timestamps_ms, self._bar_ts_s * 1_000)
             trades = np.append(trades, self._bar_trades)
 
         mat = compute_batch(

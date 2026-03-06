@@ -896,16 +896,13 @@ class PositionResolver:
         stale_tokens = [
             tid
             for tid, ctx in self._market_contexts.items()
-            if ctx.condition_id not in active_cids
-            and time.time_ns() > ctx.end_date_ns
+            if ctx.condition_id not in active_cids and time.time_ns() > ctx.end_date_ns
         ]
         for tid in stale_tokens:
             del self._market_contexts[tid]
 
         # Prune reference prices for resolved conditions
-        stale_cids = [
-            cid for cid in self._reference_prices if cid not in active_cids
-        ]
+        stale_cids = [cid for cid in self._reference_prices if cid not in active_cids]
         for cid in stale_cids:
             del self._reference_prices[cid]
 
@@ -1121,9 +1118,7 @@ class PositionResolver:
 
         for order_id, position in open_positions.items():
             ctx = self._market_contexts.get(position.token_id)
-            ref_price = self._reference_prices.get(
-                ctx.condition_id if ctx else "", 0.0
-            )
+            ref_price = self._reference_prices.get(ctx.condition_id if ctx else "", 0.0)
             # Compute unrealized PnL for informational purposes only
             unrealized = 0.0
             if btc_price and ref_price and ref_price > 0:

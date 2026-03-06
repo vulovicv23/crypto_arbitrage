@@ -1,0 +1,88 @@
+{
+  "v6_reg_15m": {
+    "description": "v6 regression, 15m horizon — best performer so far (+13.5% in 12h)",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_15m_v4_reg.pkl",
+      "ML_MODEL_TYPE": "regression",
+      "ML_MIN_PREDICTED_RETURN": "0.0001",
+      "ML_HORIZON_S": "900",
+      "ML_FEATURE_WINDOW": "4000",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "PREDICTION_HORIZON_S": "900",
+      "DISCOVERY_TIMEFRAMES": "15m",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.005",
+      "MAX_POSITIONS_PER_CONDITION": "5",
+      "TRENDING_UP_SIZE_MULTIPLIER": "0.5",
+      "TREND_SIZE_MULTIPLIER": "1.0",
+      "WEAK_STRENGTH_MULTIPLIER": "0.5",
+      "MODERATE_STRENGTH_MULTIPLIER": "0.4"
+    }
+  },
+  "v6_reg_1h": {
+    "description": "v6 regression, 1h horizon — fixed discovery for human-readable slugs",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_1h_v4_reg.pkl",
+      "ML_MODEL_TYPE": "regression",
+      "ML_MIN_PREDICTED_RETURN": "0.0001",
+      "ML_HORIZON_S": "3600",
+      "ML_FEATURE_WINDOW": "4000",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "PREDICTION_HORIZON_S": "3600",
+      "DISCOVERY_TIMEFRAMES": "1h",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.005",
+      "TRENDING_UP_SIZE_MULTIPLIER": "0.5",
+      "TREND_SIZE_MULTIPLIER": "1.0",
+      "WEAK_STRENGTH_MULTIPLIER": "0.5",
+      "MODERATE_STRENGTH_MULTIPLIER": "0.4"
+    }
+  },
+  "v6_reg_4h": {
+    "description": "v6 regression, 4h horizon",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_4h_v4_reg.pkl",
+      "ML_MODEL_TYPE": "regression",
+      "ML_MIN_PREDICTED_RETURN": "0.0001",
+      "ML_HORIZON_S": "14400",
+      "ML_FEATURE_WINDOW": "4000",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "PREDICTION_HORIZON_S": "14400",
+      "DISCOVERY_TIMEFRAMES": "4h",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.005",
+      "TRENDING_UP_SIZE_MULTIPLIER": "0.5",
+      "TREND_SIZE_MULTIPLIER": "1.0",
+      "WEAK_STRENGTH_MULTIPLIER": "0.5",
+      "MODERATE_STRENGTH_MULTIPLIER": "0.4"
+    }
+  },
+  "v6_reg_1d": {
+    "description": "v6 regression, daily horizon — noon-to-noon ET (24h) markets",
+    "env_overrides": {
+      "ML_ENABLED": "true",
+      "ML_MODEL_PATH": "models/btc_1d_v4_reg.pkl",
+      "ML_MODEL_TYPE": "regression",
+      "ML_MIN_PREDICTED_RETURN": "0.0001",
+      "ML_HORIZON_S": "86400",
+      "ML_FEATURE_WINDOW": "4000",
+      "ML_PREDICTION_INTERVAL": "0.25",
+      "PREDICTION_HORIZON_S": "86400",
+      "DISCOVERY_TIMEFRAMES": "1d",
+      "DISCOVERY_MIN_SECONDS": "3600",
+      "MIN_EDGE_THRESHOLD": "0.02",
+      "MAX_EDGE_THRESHOLD": "0.30",
+      "MAX_POSITION_PCT": "0.005",
+      "TRENDING_UP_SIZE_MULTIPLIER": "0.5",
+      "TREND_SIZE_MULTIPLIER": "1.0",
+      "WEAK_STRENGTH_MULTIPLIER": "0.5",
+      "MODERATE_STRENGTH_MULTIPLIER": "0.4"
+    }
+  }
+}

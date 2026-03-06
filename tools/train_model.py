@@ -187,9 +187,7 @@ def generate_labels(
         direction = (future > current).astype(np.int8)
         if dead_zone > 0:
             significant = np.abs(ret) > dead_zone
-            labels[: n - horizon_steps] = np.where(
-                significant, direction, np.int8(-1)
-            )
+            labels[: n - horizon_steps] = np.where(significant, direction, np.int8(-1))
         else:
             labels[: n - horizon_steps] = direction
 
@@ -758,7 +756,9 @@ async def run(args: argparse.Namespace) -> None:
             days=args.max_days
         )
         start_ms = int(cutoff.timestamp() * 1000)
-        logger.info("Limiting data to last %d days (since %s)", args.max_days, cutoff.date())
+        logger.info(
+            "Limiting data to last %d days (since %s)", args.max_days, cutoff.date()
+        )
     data = await load_klines(start_ms=start_ms)
 
     logger.info(

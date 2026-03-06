@@ -93,23 +93,39 @@ class RiskManager:
         if len(self._state.open_positions) >= self._cfg.max_open_positions:
             return False, 0.0, "Max open positions reached"
 
-        # 5. Total exposure
+        # 5. Per-condition checks: position limit and side lock
+        if self._cfg.max_positions_per_condition > 0:
+            cond_positions = [
+                p
+                for p in self._state.open_positions.values()
+                if p.condition_id == signal.condition_id
+            ]
+            # 5a. Max positions per condition
+            if len(cond_positions) >= self._cfg.max_positions_per_condition:
+                return False, 0.0, "Max positions per condition reached"
+            # 5b. Side lock — don't take opposing sides on the same condition
+            if cond_positions:
+                existing_side = cond_positions[0].side
+                if signal.side != existing_side:
+                    return False, 0.0, "Side lock: opposing position on same condition"
+
+        # 6. Total exposure
         total_exposure = sum(p.size for p in self._state.open_positions.values())
         max_exposure = self._state.capital * self._cfg.max_total_exposure_pct
         if total_exposure >= max_exposure:
             return False, 0.0, "Total exposure limit reached"
 
-        # 6. Latency budget
+        # 7. Latency budget
         age_ms = (time.time_ns() - signal.timestamp_ns) / 1_000_000
         if age_ms > self._exec_cfg.max_latency_ms:
             return False, 0.0, f"Signal too stale ({age_ms:.1f}ms)"
 
-        # 7. Compute position size
+        # 8. Compute position size
         size = self._compute_size(signal)
         if size <= 0:
             return False, 0.0, "Computed size <= 0"
 
-        # 8. Verify size doesn't exceed remaining exposure budget
+        # 9. Verify size doesn't exceed remaining exposure budget
         remaining_budget = max_exposure - total_exposure
         size = min(size, remaining_budget)
 

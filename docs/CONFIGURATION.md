@@ -92,7 +92,7 @@ Controls automatic market discovery via the Gamma API. Uses **predictive schedul
 |-----------------------------|---------------------------|-------------|-----------|-----------------------------------------------------------|
 | `enabled`                   | `DISCOVERY_ENABLED`       | `bool`      | `true`    | Enable/disable auto-discovery                             |
 | `assets`                    | `DISCOVERY_ASSETS`        | `list[str]` | `["BTC"]` | Assets to discover (comma-separated)                      |
-| `timeframes`                | `DISCOVERY_TIMEFRAMES`    | `list[str]` | `["5m", "15m"]` | Timeframes to track (comma-separated: 5m,15m,1h,4h)|
+| `timeframes`                | `DISCOVERY_TIMEFRAMES`    | `list[str]` | `["5m", "15m"]` | Timeframes to track (comma-separated: 5m,15m,1h,4h,1d)|
 | `interval_s`                | `DISCOVERY_INTERVAL_S`    | `float`     | `15`      | Background poll interval between burst windows (seconds)  |
 | `burst_poll_interval`       | `DISCOVERY_BURST_INTERVAL_S`| `float`   | `2.0`     | Fast poll interval during burst window (seconds)          |
 | `burst_window`              | `DISCOVERY_BURST_WINDOW_S`| `float`     | `15`      | Duration of burst polling around each boundary (seconds)  |
@@ -185,6 +185,7 @@ Controls position sizing, daily limits, and cooldowns.
 | `trending_up_size_multiplier` | `TRENDING_UP_SIZE_MULTIPLIER` | `float` | `0.5` | Position size multiplier in trending-up regime (reduced — ML underperforms in uptrends) |
 | `moderate_strength_multiplier` | `MODERATE_STRENGTH_MULTIPLIER` | `float` | `0.4` | Position size multiplier for MODERATE strength signals |
 | `weak_strength_multiplier` | `WEAK_STRENGTH_MULTIPLIER` | `float` | `0.5` | Position size multiplier for WEAK strength signals (0 = skip) |
+| `max_positions_per_condition` | `MAX_POSITIONS_PER_CONDITION` | `int` | `1` | Max positions per condition_id (0 = unlimited, legacy) |
 
 ---
 
@@ -322,6 +323,7 @@ All configurable environment variables in one table:
 | `TRENDING_UP_SIZE_MULTIPLIER` | `RiskConfig`          | `float`     | `0.5`      | No       | Sizing multiplier for trending-up regime       |
 | `MODERATE_STRENGTH_MULTIPLIER` | `RiskConfig`         | `float`     | `0.4`      | No       | Sizing multiplier for MODERATE signals         |
 | `WEAK_STRENGTH_MULTIPLIER`  | `RiskConfig`            | `float`     | `0.5`      | No       | Sizing multiplier for WEAK signals (0 = skip)  |
+| `MAX_POSITIONS_PER_CONDITION` | `RiskConfig`          | `int`       | `1`        | No       | Max positions per condition (0 = unlimited)     |
 | `MAX_LATENCY_MS`            | `ExecutionConfig`       | `int`       | `100`      | No       | Max signal age (ms)                            |
 | `MAX_ORDERS_PER_SECOND`     | `ExecutionConfig`       | `int`       | `50`       | No       | Rate limit cap                                 |
 | `HTTP_POOL_SIZE`            | `ExecutionConfig`       | `int`       | `20`       | No       | HTTP connection pool size                      |

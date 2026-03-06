@@ -254,7 +254,9 @@ def batch_ml_predict(
 
     model = model_artifact["model"]
     model_type = model_artifact.get("model_type", "classification")
-    calibrator = model_artifact.get("calibrator") if model_type == "classification" else None
+    calibrator = (
+        model_artifact.get("calibrator") if model_type == "classification" else None
+    )
     n = len(data.timestamps_ms)
 
     preds = np.full(n, np.nan, dtype=np.float64)
@@ -667,7 +669,9 @@ def run_backtest(
                 min(raw_pred, max_predicted_return),
             )
             confidence = 1.0  # no triple-counting
-            p_up_val = 0.5 + predicted_return / (2.0 * max_predicted_return)  # for tracking
+            p_up_val = 0.5 + predicted_return / (
+                2.0 * max_predicted_return
+            )  # for tracking
         else:
             # Classification: raw_pred is P(up)
             p_up_val = raw_pred

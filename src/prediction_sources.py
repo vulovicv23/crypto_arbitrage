@@ -278,7 +278,9 @@ class CryptoCompareWSSource(PriceSource):
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     if not got_message:
                         got_message = True
-                        self._reconnect_delay = 1.0  # Reset backoff on first real message
+                        self._reconnect_delay = (
+                            1.0  # Reset backoff on first real message
+                        )
                     await self._handle_message(msg.data)
                 elif msg.type in (
                     aiohttp.WSMsgType.CLOSED,

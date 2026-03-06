@@ -72,14 +72,16 @@ Note: `clobTokenIds` and `outcomes` can be either JSON strings or arrays dependi
 
 The discovery module extracts asset and timeframe from the market slug:
 
-| Pattern Regex               | Timeframe |
-|-----------------------------|-----------|
-| `-updown-5m-`              | 5m        |
-| `-updown-15m-`             | 15m       |
-| `-updown-1h-`              | 1h        |
-| `-updown-4h-`              | 4h        |
+| Pattern Regex               | Timeframe | Example Slug |
+|-----------------------------|-----------|--------------|
+| `-updown-5m-`              | 5m        | `btc-updown-5m-1772787600` |
+| `-updown-15m-`             | 15m       | `btc-updown-15m-1772787600` |
+| `-updown-1h-`              | 1h        | `btc-updown-1h-1772787600` |
+| `-updown-4h-`              | 4h        | `btc-updown-4h-1772787600` |
+| `-up-or-down-\w+-\d+-\d+[ap]m-et$` | 1h | `bitcoin-up-or-down-march-6-4am-et` |
+| `-up-or-down-on-\w+-\d+$` | 1d        | `bitcoin-up-or-down-on-march-6` |
 
-Asset is extracted via: `^([a-z]+)-updown-\d+[mh]-\d+$` (group 1, uppercased).
+Machine-format slugs use `^([a-z]+)-updown-\d+[mh]-\d+$` for asset extraction (group 1, uppercased). Human-format slugs (1h hourly, 1d daily) use question-text matching for asset identification.
 
 ### Filtering Pipeline
 

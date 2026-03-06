@@ -29,6 +29,8 @@ Checks are evaluated in order — first failure short-circuits:
 | 3 | Cooldown active | `Cooldown active ({X}s left)` |
 | 4 | Daily loss limit | `Daily loss limit hit: {pnl}` — also sets halt |
 | 5 | Max open positions | `Max open positions reached` |
+| 5a | Per-condition position limit | `Max positions per condition reached` |
+| 5b | Side lock | `Side lock: opposing position on same condition` |
 | 6 | Total exposure limit | `Total exposure limit reached` |
 | 7 | Latency budget | `Signal too stale ({X}ms)` |
 | 8 | Position size > 0 | `Computed size <= 0` |
@@ -63,6 +65,7 @@ size = base * regime_multiplier * strength_multiplier * confidence_multiplier * 
 | `trending_up_size_multiplier` | `TRENDING_UP_SIZE_MULTIPLIER` | 0.5 | Size multiplier in trending-up markets |
 | `moderate_strength_multiplier` | `MODERATE_STRENGTH_MULTIPLIER` | 0.4 | Size multiplier for MODERATE signals |
 | `weak_strength_multiplier` | `WEAK_STRENGTH_MULTIPLIER` | 0.5 | Size multiplier for WEAK signals (0 = skip WEAK trades) |
+| `max_positions_per_condition` | `MAX_POSITIONS_PER_CONDITION` | 1 | Max positions per condition_id (0 = unlimited) |
 
 ### State Management
 

@@ -40,12 +40,23 @@ def check_signal(self, signal: Signal) -> tuple[bool, float, str]:
 | 2 | Cooldown active?          | `"Cooldown active ({N}s left)"`                   | `COOLDOWN_AFTER_LOSSES`, `COOLDOWN_DURATION_S` |
 | 3 | Daily loss limit          | `"Daily loss limit hit: {pnl}"`                   | `MAX_DAILY_LOSS_PCT` (default 2%)      |
 | 4 | Max open positions        | `"Max open positions reached"`                    | `MAX_OPEN_POSITIONS` (default 20)      |
-| 5 | Total exposure            | `"Total exposure limit reached"`                  | `MAX_TOTAL_EXPOSURE_PCT` (default 10%) |
-| 6 | Latency budget            | `"Signal too stale ({N}ms)"`                      | `MAX_LATENCY_MS` (default 100ms)       |
-| 7 | Compute position size     | `"Computed size <= 0"`                            | _(sizing formula result)_              |
-| 8 | Clamp to remaining budget | _(size = min(size, remaining_exposure_budget))_   | _(derived from check #5)_             |
+| 5a | Per-condition position limit | `"Max positions per condition reached"`         | `MAX_POSITIONS_PER_CONDITION` (default 1) |
+| 5b | Side lock                 | `"Side lock: opposing position on same condition"` | _(derived from 5a check)_             |
+| 6 | Total exposure            | `"Total exposure limit reached"`                  | `MAX_TOTAL_EXPOSURE_PCT` (default 10%) |
+| 7 | Latency budget            | `"Signal too stale ({N}ms)"`                      | `MAX_LATENCY_MS` (default 100ms)       |
+| 8 | Compute position size     | `"Computed size <= 0"`                            | _(sizing formula result)_              |
+| 9 | Clamp to remaining budget | _(size = min(size, remaining_exposure_budget))_   | _(derived from check #6)_             |
 
 **Important:** Check #3 (daily loss) triggers a **permanent halt** for the rest of the trading day. The `halted` flag is only reset on the next calendar day.
+
+### Per-Condition Position Limit & Side Lock (Checks 5a–5b)
+
+When `MAX_POSITIONS_PER_CONDITION > 0` (default: 1), the risk manager enforces two sub-checks per condition:
+
+1. **Position limit:** No more than `max_positions_per_condition` open positions on the same `condition_id`. Default of 1 prevents stacking multiple bets on the same market.
+2. **Side lock:** If any position exists on a condition, new signals must match the existing side. This prevents the bot from hedging against itself by holding both YES and NO on the same market.
+
+Setting `MAX_POSITIONS_PER_CONDITION=0` disables both checks (legacy behavior).
 
 ### Latency Check Detail
 
@@ -319,4 +330,5 @@ All risk-related environment variables:
 | `TRENDING_UP_SIZE_MULTIPLIER` | `float` | `0.5`  | Position size multiplier in trending-up regime             |
 | `MODERATE_STRENGTH_MULTIPLIER` | `float` | `0.4`  | Position size multiplier for MODERATE strength signals     |
 | `WEAK_STRENGTH_MULTIPLIER`  | `float` | `0.5`  | Position size multiplier for WEAK strength signals (0 = skip) |
+| `MAX_POSITIONS_PER_CONDITION` | `int` | `1`    | Max open positions per condition_id (0 = unlimited, legacy)  |
 | `MAX_LATENCY_MS`            | `int`   | `100`    | Max allowed signal age in milliseconds (from ExecutionConfig)|

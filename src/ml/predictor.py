@@ -75,9 +75,7 @@ class MLPredictor:
         self._model = self._model_artifact["model"]
 
         # Auto-detect model type from artifact (backward compat: default to classification)
-        self._model_type: str = self._model_artifact.get(
-            "model_type", "classification"
-        )
+        self._model_type: str = self._model_artifact.get("model_type", "classification")
 
         # Only load calibrator for classification models
         if self._model_type == "classification":
